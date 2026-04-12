@@ -9,6 +9,7 @@
   <title>Dual N-Back</title>
   <link id="mf" rel="manifest">
   <link rel="apple-touch-icon" id="ati">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -145,6 +146,11 @@
     .chart-wrap { position: relative; height: 170px; }
 
     .empty-hint { color: var(--muted); font-size: 12px; padding: 6px 0; }
+
+    /* ── AUTH OVERLAY ── */
+    .auth-input { width: 100%; padding: 13px 15px; background: var(--card); border: 1.5px solid var(--border); border-radius: 13px; color: var(--text); font-size: 15px; outline: none; transition: border-color .2s; -webkit-appearance: none; }
+    .auth-input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(0,212,255,0.12); }
+    .auth-input::placeholder { color: var(--muted); }
   </style>
 </head>
 <body>
@@ -155,6 +161,8 @@
   <div class="title">
     Dual N-Back
   </div>
+  <span id="user-lbl" style="display:none;font-size:10px;color:var(--muted);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+  <button id="logout-btn" onclick="doLogout()" style="display:none;padding:4px 9px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--muted);font-size:10px;cursor:pointer;white-space:nowrap;flex-shrink:0">Logout</button>
   <div class="n-ctrl">
     <button onclick="changeN(-1)">−</button>
     <span class="n-val" id="n-disp">2</span>
@@ -297,7 +305,129 @@
   <button class="start-btn" onclick="closeOverlay()">Weiter trainieren</button>
 </div>
 
+<!-- AUTH OVERLAY -->
+<div class="overlay show" id="auth-overlay">
+  <div style="margin-bottom:28px;text-align:center">
+    <div class="logo" style="margin:0 auto 14px;width:48px;height:48px"><div></div><div></div><div></div><div></div></div>
+    <div style="font-size:22px;font-weight:700" id="auth-title">Willkommen</div>
+    <div style="font-size:13px;color:var(--muted);margin-top:5px">Melde dich an, um zu trainieren</div>
+  </div>
+  <div style="width:100%;max-width:300px;display:flex;flex-direction:column;gap:12px">
+    <input type="email"    id="auth-email" class="auth-input" placeholder="E-Mail" autocomplete="email">
+    <input type="password" id="auth-pw"    class="auth-input" placeholder="Passwort (min. 6 Zeichen)" autocomplete="current-password">
+    <button class="start-btn" id="auth-submit" onclick="authSubmit()" style="width:100%;margin-top:4px">Anmelden</button>
+    <div style="text-align:center">
+      <button id="auth-toggle-btn" onclick="toggleAuthMode()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline">
+        Noch kein Konto? Registrieren
+      </button>
+    </div>
+    <div id="auth-err" style="font-size:12px;text-align:center;min-height:16px;line-height:1.4"></div>
+  </div>
+</div>
+
 <script>
+// ══════════════════════════════════════════════
+// SUPABASE AUTH
+// ══════════════════════════════════════════════
+const SUPA_URL = 'https://emsbvacrqijebbwrjzwe.supabase.co';
+const SUPA_KEY = 'sb_publishable_SiQOFbmrqzaveaoaNfQmEQ_zjxKIHd5';
+const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+
+let currentUser = null;
+let _authMode   = 'login';
+
+// Check existing session on load, then listen for changes
+(async () => {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session?.user) { currentUser = session.user; await _onSignedIn(); }
+  sb.auth.onAuthStateChange(async (evt, sess) => {
+    if (evt === 'SIGNED_IN')  { currentUser = sess.user; await _onSignedIn(); }
+    if (evt === 'SIGNED_OUT') { currentUser = null;       _onSignedOut(); }
+  });
+})();
+
+async function authSubmit() {
+  const email = document.getElementById('auth-email').value.trim();
+  const pw    = document.getElementById('auth-pw').value;
+  const errEl = document.getElementById('auth-err');
+  const btn   = document.getElementById('auth-submit');
+  if (!email || !pw) { _authErr('E-Mail und Passwort eingeben'); return; }
+  btn.textContent = '…'; btn.disabled = true; errEl.textContent = '';
+  const { data, error } = _authMode === 'login'
+    ? await sb.auth.signInWithPassword({ email, password: pw })
+    : await sb.auth.signUp({ email, password: pw });
+  btn.disabled = false;
+  btn.textContent = _authMode === 'login' ? 'Anmelden' : 'Registrieren';
+  if (error) { _authErr(error.message); return; }
+  if (_authMode === 'register' && !data.session) {
+    errEl.style.color = 'var(--green)';
+    errEl.textContent = '✓ Bestätigungs-E-Mail gesendet — bitte Postfach prüfen!';
+  }
+}
+
+function toggleAuthMode() {
+  _authMode = _authMode === 'login' ? 'register' : 'login';
+  const login = _authMode === 'login';
+  document.getElementById('auth-title').textContent      = login ? 'Willkommen zurück'                 : 'Konto erstellen';
+  document.getElementById('auth-submit').textContent     = login ? 'Anmelden'                           : 'Registrieren';
+  document.getElementById('auth-toggle-btn').textContent = login ? 'Noch kein Konto? Registrieren'     : 'Schon ein Konto? Anmelden';
+  document.getElementById('auth-err').textContent = '';
+}
+
+function _authErr(msg) {
+  const el = document.getElementById('auth-err');
+  el.style.color = 'var(--red)'; el.textContent = msg;
+}
+
+async function doLogout() {
+  if (G.running) stopGame();
+  await sb.auth.signOut();
+}
+
+async function _onSignedIn() {
+  await _loadCloudSessions();
+  document.getElementById('auth-overlay').classList.remove('show');
+  const lbl = document.getElementById('user-lbl');
+  lbl.textContent = currentUser.email;
+  lbl.style.display = 'block';
+  document.getElementById('logout-btn').style.display = 'block';
+  refreshSessList(); refreshTodayStats();
+}
+
+function _onSignedOut() {
+  document.getElementById('auth-overlay').classList.add('show');
+  document.getElementById('user-lbl').style.display   = 'none';
+  document.getElementById('logout-btn').style.display = 'none';
+  sessions = [];
+  localStorage.removeItem('nb_v2');
+  refreshSessList(); refreshTodayStats();
+}
+
+async function _loadCloudSessions() {
+  if (!currentUser) return;
+  const { data, error } = await sb
+    .from('nb_sessions')
+    .select('date,n,mode,pa,aa,oa,dur,apd,aad')
+    .eq('user_id', currentUser.id)
+    .order('date', { ascending: true });
+  if (error) { console.warn('Load error:', error.message); return; }
+  if (data?.length) {
+    sessions = data;
+    localStorage.setItem('nb_v2', JSON.stringify(sessions));
+  }
+}
+
+async function _syncSession(s) {
+  if (!currentUser) return;
+  const { error } = await sb.from('nb_sessions').insert({
+    user_id: currentUser.id,
+    date: s.date, n: s.n, mode: s.mode,
+    pa: s.pa ?? null, aa: s.aa ?? null, oa: s.oa ?? null,
+    dur: s.dur ?? null, apd: s.apd ?? null, aad: s.aad ?? null,
+  });
+  if (error) console.warn('Sync failed:', error.message);
+}
+
 // ══════════════════════════════════════════════
 // STATE
 // ══════════════════════════════════════════════
@@ -561,8 +691,10 @@ function finishSession() {
   // Find the last session of the same mode for improvement comparison (before pushing current)
   const prevSameModeSession = [...sessions].reverse().find(s => s.mode === G.mode) || null;
 
-  sessions.push({ date: new Date().toISOString(), n: G.n, mode: G.mode, pa, aa, oa, dur, apd, aad });
+  const _newSess = { date: new Date().toISOString(), n: G.n, mode: G.mode, pa, aa, oa, dur, apd, aad };
+  sessions.push(_newSess);
   saveSessions();
+  _syncSession(_newSess); // fire-and-forget cloud sync
 
   // Auto-adjust N
   let adj = '';
@@ -699,6 +831,7 @@ function refreshAutoNBtn() {
 function clearData() {
   if (!confirm('Alle Trainingsdaten löschen?')) return;
   sessions = []; saveSessions(); refreshSessList(); refreshTodayStats(); buildCharts();
+  if (currentUser) sb.from('nb_sessions').delete().eq('user_id', currentUser.id);
 }
 
 // ══════════════════════════════════════════════
