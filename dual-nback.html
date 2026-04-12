@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="N-Back">
+  <title>Dual N-Back</title>
+  <link id="mf" rel="manifest">
+  <link rel="apple-touch-icon" id="ati">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #070c18;
+      --surface: #0d1526;
+      --card: #111d2e;
+      --border: #1e2d45;
+      --cyan: #00d4ff;
+      --amber: #f5a623;
+      --green: #10b981;
+      --red: #ef4444;
+      --text: #e8f0fe;
+      --muted: #4a6080;
+      --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+      --sat: env(safe-area-inset-top, 0px);
+      --sab: env(safe-area-inset-bottom, 0px);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+    html, body { height: 100%; overflow: hidden; background: var(--bg); }
+    body { color: var(--text); font-family: -apple-system, 'SF Pro Display', system-ui, sans-serif; display: flex; flex-direction: column; padding-top: var(--sat); padding-bottom: var(--sab); }
+
+    /* ── HEADER ── */
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 14px; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .logo { width: 34px; height: 34px; display: grid; grid-template-columns: 1fr 1fr; gap: 3px; flex-shrink: 0; }
+    .logo div { border-radius: 3px; }
+    .logo div:nth-child(1) { background: var(--cyan); }
+    .logo div:nth-child(2) { background: var(--amber); }
+    .logo div:nth-child(3) { background: transparent; border: 1.5px solid var(--muted); }
+    .logo div:nth-child(4) { background: var(--amber); }
+    .title { font-size: 14px; font-weight: 600; flex: 1; }
+    .title small { color: var(--muted); font-weight: 400; font-size: 11px; display: block; margin-top: 1px; }
+    .mode-btn { padding: 5px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; cursor: pointer; border: 1px solid; background: none; }
+    .mode-btn.dual    { color: var(--cyan);  border-color: rgba(0,212,255,0.4);  background: rgba(0,212,255,0.1);  }
+    .mode-btn.position{ color: var(--amber); border-color: rgba(245,166,35,0.4); background: rgba(245,166,35,0.1); }
+    .mode-btn.audio   { color: var(--green); border-color: rgba(16,185,129,0.4); background: rgba(16,185,129,0.1); }
+    .n-ctrl { display: flex; align-items: center; gap: 2px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 3px 6px; }
+    .n-ctrl button { background: none; border: none; color: var(--cyan); font-size: 18px; cursor: pointer; line-height: 1; padding: 0 3px; }
+    .n-val { font-family: var(--font-mono); font-size: 17px; font-weight: 700; min-width: 18px; text-align: center; }
+
+    /* ── TABS ── */
+    .tabs { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .tab { flex: 1; padding: 9px 4px; text-align: center; font-size: 11px; color: var(--muted); cursor: pointer; border: none; background: none; border-bottom: 2px solid transparent; font-weight: 500; transition: color .2s, border-color .2s; }
+    .tab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
+
+    /* ── PANELS ── */
+    .panel { display: none; flex: 1; overflow-y: auto; flex-direction: column; }
+    .panel.active { display: flex; }
+
+    /* ── PLAY PANEL ── */
+    #panel-play { align-items: center; justify-content: space-evenly; padding: 12px 16px; gap: 8px; }
+
+    .prog-wrap { width: 100%; }
+    .prog-info { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); font-family: var(--font-mono); margin-bottom: 5px; }
+    .prog-track { width: 100%; height: 3px; background: var(--border); border-radius: 2px; }
+    .prog-fill { height: 100%; background: var(--cyan); border-radius: 2px; transition: width .3s; width: 0%; }
+
+    .grid-wrap { width: min(320px, 90vw); aspect-ratio: 1; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; width: 100%; height: 100%; }
+    .cell { background: var(--card); border: 1px solid var(--border); border-radius: 10px; transition: background .12s, border-color .12s, transform .1s, box-shadow .12s; }
+    .cell.active { background: var(--cyan); border-color: var(--cyan); transform: scale(0.94); box-shadow: 0 0 22px rgba(0,212,255,0.45); }
+
+    .letter-box { font-family: var(--font-mono); font-size: 56px; font-weight: 700; color: var(--amber); min-height: 68px; display: flex; align-items: center; justify-content: center; text-shadow: 0 0 24px rgba(245,166,35,0.5); transition: opacity .1s; }
+    .letter-box.hidden { opacity: 0; }
+
+    .resp-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: min(320px, 90vw); }
+    .resp-btn { padding: 14px 8px; border-radius: 14px; border: 2px solid var(--border); background: var(--card); color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s; text-align: center; -webkit-user-select: none; user-select: none; }
+    .resp-btn .icon { font-size: 22px; display: block; margin-bottom: 3px; }
+    .resp-btn:disabled { opacity: 0.35; }
+    .resp-btn.pos-btn { border-color: rgba(0,212,255,0.25); }
+    .resp-btn.pos-btn.pressed { background: rgba(0,212,255,0.18); border-color: var(--cyan); transform: scale(0.95); }
+    .resp-btn.aud-btn { border-color: rgba(245,166,35,0.25); }
+    .resp-btn.aud-btn.pressed { background: rgba(245,166,35,0.18); border-color: var(--amber); transform: scale(0.95); }
+    .resp-btn.correct { border-color: var(--green) !important; background: rgba(16,185,129,0.12) !important; }
+    .resp-btn.wrong   { border-color: var(--red)   !important; background: rgba(239,68,68,0.12)  !important; }
+
+    .start-btn { padding: 15px 44px; background: var(--cyan); color: #000; border: none; border-radius: 14px; font-size: 15px; font-weight: 800; cursor: pointer; letter-spacing: 0.5px; box-shadow: 0 0 24px rgba(0,212,255,0.3); transition: transform .1s, box-shadow .1s; }
+    .start-btn:active { transform: scale(0.96); }
+    .start-btn.stop { background: var(--red); color: #fff; box-shadow: 0 0 24px rgba(239,68,68,0.3); }
+
+    /* ── RESULT OVERLAY ── */
+    .overlay { position: fixed; inset: 0; background: rgba(7,12,24,0.96); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 200; padding: 24px; }
+    .overlay.show { display: flex; }
+    .ov-title { font-size: 24px; font-weight: 700; margin-bottom: 6px; }
+    .ov-sub   { font-size: 13px; color: var(--muted); margin-bottom: 22px; }
+    .ov-grid  { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; max-width: 300px; margin-bottom: 16px; }
+    .ov-card  { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px; text-align: center; }
+    .ov-card .v { font-family: var(--font-mono); font-size: 30px; font-weight: 700; }
+    .ov-card .l { font-size: 10px; letter-spacing: 0.5px; color: var(--muted); margin-top: 4px; }
+    .ov-card.c .v { color: var(--cyan); }
+    .ov-card.a .v { color: var(--amber); }
+    .ov-card.g .v { color: var(--green); }
+    .ov-adj { font-size: 13px; color: var(--muted); margin-bottom: 20px; text-align: center; line-height: 1.5; }
+
+    /* ── STATS PANEL ── */
+    #panel-stats { padding: 14px; gap: 14px; }
+    .sec-lbl { font-size: 10px; font-weight: 700; letter-spacing: 1.2px; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .card-hdr { background: rgba(0,212,255,0.07); border-bottom: 1px solid var(--border); padding: 9px 14px; font-size: 11px; font-weight: 600; color: var(--cyan); letter-spacing: 0.5px; }
+    .kv-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 14px; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .kv-row:last-child { border-bottom: none; }
+    .kv-row .k { color: var(--muted); font-size: 12px; }
+    .kv-row .v { font-family: var(--font-mono); font-weight: 600; }
+    .sess-list { display: flex; flex-direction: column; gap: 6px; }
+    .sess-item { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 9px 13px; display: flex; align-items: center; gap: 8px; font-size: 12px; }
+    .si-num  { color: var(--muted); min-width: 18px; }
+    .si-type { font-weight: 700; color: var(--cyan); min-width: 30px; font-size: 11px; }
+    .si-acc  { font-family: var(--font-mono); font-weight: 700; flex: 1; }
+    .si-acc.g { color: var(--green); }
+    .si-acc.y { color: var(--amber); }
+    .si-acc.r { color: var(--red); }
+    .si-n    { color: var(--muted); font-family: var(--font-mono); min-width: 28px; }
+    .si-dur  { color: var(--muted); }
+
+    /* Settings in stats */
+    .stepper { display: flex; align-items: center; gap: 6px; }
+    .step-btn { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .step-val { font-family: var(--font-mono); font-weight: 600; min-width: 36px; text-align: center; font-size: 13px; }
+    .small-btn { font-size: 11px; padding: 5px 12px; border-radius: 6px; border: 1px solid; cursor: pointer; background: none; }
+    .small-btn.on  { color: var(--cyan); border-color: rgba(0,212,255,0.4); background: rgba(0,212,255,0.1); }
+    .small-btn.off { color: var(--muted); border-color: var(--border); }
+    .small-btn.danger { color: var(--red); border-color: rgba(239,68,68,0.4); }
+
+    /* ── HISTORY PANEL ── */
+    #panel-history { padding: 14px; gap: 14px; }
+    .chart-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+    .chart-ttl { font-size: 10px; font-weight: 700; letter-spacing: 1px; color: var(--muted); text-align: center; text-transform: uppercase; margin-bottom: 10px; }
+    .chart-wrap { position: relative; height: 170px; }
+
+    .empty-hint { color: var(--muted); font-size: 12px; padding: 6px 0; }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo"><div></div><div></div><div></div><div></div></div>
+  <div class="title">
+    Dual N-Back
+    <small id="mode-label">Dual Mode</small>
+  </div>
+  <button class="mode-btn dual" id="mode-btn" onclick="cycleMode()">DUAL</button>
+  <div class="n-ctrl">
+    <button onclick="changeN(-1)">−</button>
+    <span class="n-val" id="n-disp">2</span>
+    <button onclick="changeN(1)">+</button>
+  </div>
+</header>
+
+<!-- TABS -->
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('play')"  id="tab-play">▶ Spielen</button>
+  <button class="tab"        onclick="switchTab('stats')" id="tab-stats">◉ Stats</button>
+  <button class="tab"        onclick="switchTab('history')" id="tab-history">◎ Verlauf</button>
+</div>
+
+<!-- PLAY PANEL -->
+<div class="panel active" id="panel-play">
+  <div class="prog-wrap">
+    <div class="prog-info">
+      <span id="trial-cnt">0 of 0</span>
+      <span id="live-score"></span>
+    </div>
+    <div class="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
+  </div>
+
+  <div class="grid-wrap">
+    <div class="grid" id="grid">
+      <div class="cell" id="c0"></div><div class="cell" id="c1"></div><div class="cell" id="c2"></div>
+      <div class="cell" id="c3"></div><div class="cell" id="c4"></div><div class="cell" id="c5"></div>
+      <div class="cell" id="c6"></div><div class="cell" id="c7"></div><div class="cell" id="c8"></div>
+    </div>
+  </div>
+
+  <div class="letter-box hidden" id="letter-box">C</div>
+
+  <div class="resp-btns" id="resp-btns">
+    <button class="resp-btn pos-btn" id="btn-pos" onclick="respond('pos')" disabled>
+      <span class="icon">⊞</span>Position
+    </button>
+    <button class="resp-btn aud-btn" id="btn-aud" onclick="respond('aud')" disabled>
+      <span class="icon">♪</span>Audio
+    </button>
+  </div>
+
+  <button class="start-btn" id="start-btn" onclick="toggleGame()">START</button>
+</div>
+
+<!-- STATS PANEL -->
+<div class="panel" id="panel-stats">
+  <div>
+    <div class="sec-lbl">Nächstes Set</div>
+    <div class="card">
+      <div class="card-hdr">Vorschau</div>
+      <div class="kv-row"><span class="k">Level (N)</span><span class="v" id="ns-n">2</span></div>
+      <div class="kv-row"><span class="k">Anzahl Trials</span><span class="v" id="ns-t">26</span></div>
+      <div class="kv-row"><span class="k">Trial Zeit</span><span class="v" id="ns-tt">3.0 s</span></div>
+      <div class="kv-row"><span class="k">Set-Dauer</span><span class="v" id="ns-sd">78 s</span></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="sec-lbl">Heutige Sessions</div>
+    <div class="sess-list" id="sess-list">
+      <div class="empty-hint">Noch keine Sessions heute.</div>
+    </div>
+  </div>
+
+  <div>
+    <div class="sec-lbl">Tagesstatistik</div>
+    <div class="card">
+      <div class="kv-row"><span class="k">Erste Session</span><span class="v" id="ts-start">—</span></div>
+      <div class="kv-row"><span class="k">Trainingszeit</span><span class="v" id="ts-dur">—</span></div>
+      <div class="kv-row"><span class="k">Sessions</span><span class="v" id="ts-sess">0</span></div>
+      <div class="kv-row"><span class="k">Max N</span><span class="v" id="ts-max" style="color:var(--amber)">—</span></div>
+      <div class="kv-row"><span class="k">Ø N (heute)</span><span class="v" id="ts-avg" style="color:var(--cyan)">—</span></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="sec-lbl">Einstellungen</div>
+    <div class="card">
+      <div class="kv-row">
+        <span class="k">Trial Zeit (s)</span>
+        <div class="stepper">
+          <button class="step-btn" onclick="changeTT(-0.5)">−</button>
+          <span class="step-val" id="s-tt">3.0</span>
+          <button class="step-btn" onclick="changeTT(0.5)">+</button>
+        </div>
+      </div>
+      <div class="kv-row">
+        <span class="k">Auto N-Adjust</span>
+        <button class="small-btn on" id="auto-n-btn" onclick="toggleAutoN()">AN</button>
+      </div>
+      <div class="kv-row">
+        <span class="k">Alle Daten löschen</span>
+        <button class="small-btn danger" onclick="clearData()">Reset</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- HISTORY PANEL -->
+<div class="panel" id="panel-history">
+  <div class="chart-card">
+    <div class="chart-ttl">Level-Verlauf</div>
+    <div class="chart-wrap"><canvas id="c-level"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-ttl">Ø Reaktionszeit (ms)</div>
+    <div class="chart-wrap"><canvas id="c-delay"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-ttl">Genauigkeit pro Session (%)</div>
+    <div class="chart-wrap"><canvas id="c-acc"></canvas></div>
+  </div>
+</div>
+
+<!-- RESULT OVERLAY -->
+<div class="overlay" id="overlay">
+  <div class="ov-title" id="ov-title">Session fertig!</div>
+  <div class="ov-sub"  id="ov-sub">N-2 Dual Mode</div>
+  <div class="ov-grid">
+    <div class="ov-card c"><div class="v" id="ov-pos">—</div><div class="l">POSITION</div></div>
+    <div class="ov-card a"><div class="v" id="ov-aud">—</div><div class="l">AUDIO</div></div>
+    <div class="ov-card g"><div class="v" id="ov-n">—</div><div class="l">N-LEVEL</div></div>
+    <div class="ov-card" ><div class="v" id="ov-dur">—</div><div class="l">DAUER</div></div>
+  </div>
+  <div class="ov-adj" id="ov-adj"></div>
+  <button class="start-btn" onclick="closeOverlay()">Weiter trainieren</button>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════
+const LETTERS = ['C','H','K','L','N','Q','R','S','T'];
+const MODES   = ['dual','position','audio'];
+const MODE_LABEL = { dual:'Dual Mode', position:'Position', audio:'Audio' };
+
+let G = {
+  n: 2, mode: 'dual', trialTime: 3000, autoN: true,
+  running: false, trial: 0, total: 0, seq: [],
+  posRes: false, audRes: false,
+  posResT: null, audResT: null, trialStart: 0,
+  pH: 0, pM: 0, pFA: 0,
+  aH: 0, aM: 0, aFA: 0,
+  sessStart: 0, posDelays: [], audDelays: [],
+  timer: null, stimTimer: null,
+};
+
+let sessions = JSON.parse(localStorage.getItem('nb_v2') || '[]');
+let cfg      = JSON.parse(localStorage.getItem('nb_cfg')  || '{}');
+if (cfg.n)         G.n         = cfg.n;
+if (cfg.trialTime) G.trialTime = cfg.trialTime;
+if (cfg.mode)      G.mode      = cfg.mode;
+if (cfg.autoN !== undefined) G.autoN = cfg.autoN;
+
+const saveCfg = () => localStorage.setItem('nb_cfg', JSON.stringify({ n: G.n, trialTime: G.trialTime, mode: G.mode, autoN: G.autoN }));
+const saveSessions = () => localStorage.setItem('nb_v2', JSON.stringify(sessions));
+
+// ── helpers ──
+const totalTrials = () => 20 + 3 * G.n;
+const ttSec       = ()  => (G.trialTime / 1000).toFixed(1);
+const setDur      = ()  => Math.round(totalTrials() * G.trialTime / 1000);
+const fmtDur = s  => { const m = Math.floor(s/60); return m + 'm ' + String(s%60).padStart(2,'0') + 's'; };
+const calcAcc = (h,m,fa) => { const t = h+m+fa; return t ? (h/t)*100 : -1; };
+
+// ══════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════
+refreshHeader();
+refreshNextSet();
+refreshSessList();
+refreshTodayStats();
+refreshAutoNBtn();
+refreshRespBtns();
+
+// ══════════════════════════════════════════════
+// TABS
+// ══════════════════════════════════════════════
+function switchTab(id) {
+  ['play','stats','history'].forEach(t => {
+    document.getElementById('tab-' + t).classList.toggle('active', t === id);
+    document.getElementById('panel-' + t).classList.toggle('active', t === id);
+  });
+  if (id === 'history') buildCharts();
+}
+
+// ══════════════════════════════════════════════
+// HEADER CONTROLS
+// ══════════════════════════════════════════════
+function refreshHeader() {
+  document.getElementById('n-disp').textContent = G.n;
+  const mb = document.getElementById('mode-btn');
+  mb.textContent = G.mode === 'dual' ? 'DUAL' : G.mode === 'position' ? 'POS' : 'AUD';
+  mb.className = 'mode-btn ' + G.mode;
+  document.getElementById('mode-label').textContent = MODE_LABEL[G.mode];
+}
+
+function changeN(d) {
+  if (G.running) return;
+  G.n = Math.max(1, Math.min(9, G.n + d));
+  saveCfg(); refreshHeader(); refreshNextSet();
+}
+
+function cycleMode() {
+  if (G.running) return;
+  G.mode = MODES[(MODES.indexOf(G.mode) + 1) % 3];
+  saveCfg(); refreshHeader(); refreshRespBtns();
+}
+
+function refreshRespBtns() {
+  document.getElementById('btn-pos').style.display = G.mode === 'audio'    ? 'none' : '';
+  document.getElementById('btn-aud').style.display = G.mode === 'position' ? 'none' : '';
+}
+
+function refreshNextSet() {
+  document.getElementById('ns-n').textContent  = G.n;
+  document.getElementById('ns-t').textContent  = totalTrials();
+  document.getElementById('ns-tt').textContent = ttSec() + ' s';
+  document.getElementById('ns-sd').textContent = setDur() + ' s';
+  document.getElementById('s-tt').textContent  = ttSec();
+}
+
+// ══════════════════════════════════════════════
+// GAME
+// ══════════════════════════════════════════════
+function genSeq() {
+  const t = totalTrials(), s = [];
+  for (let i = 0; i < t; i++) {
+    let pos = Math.floor(Math.random() * 9);
+    let letter = LETTERS[Math.floor(Math.random() * LETTERS.length)];
+    if (i >= G.n) {
+      if (Math.random() < 0.3) pos    = s[i - G.n].pos;
+      if (Math.random() < 0.3) letter = s[i - G.n].letter;
+    }
+    s.push({ pos, letter });
+  }
+  return s;
+}
+
+function toggleGame() { G.running ? stopGame() : startGame(); }
+
+function startGame() {
+  G.running = true; G.trial = 0; G.total = totalTrials();
+  G.seq = genSeq();
+  G.pH = G.pM = G.pFA = G.aH = G.aM = G.aFA = 0;
+  G.posDelays = []; G.audDelays = [];
+  G.sessStart = Date.now();
+
+  const sb = document.getElementById('start-btn');
+  sb.textContent = 'STOP'; sb.classList.add('stop');
+  document.getElementById('btn-pos').disabled = false;
+  document.getElementById('btn-aud').disabled = false;
+  nextTrial();
+}
+
+function stopGame(natural = false) {
+  clearTimeout(G.timer); clearTimeout(G.stimTimer);
+  G.running = false;
+  clearGrid(); hideLetterBox();
+
+  const sb = document.getElementById('start-btn');
+  sb.textContent = 'START'; sb.classList.remove('stop');
+  document.getElementById('btn-pos').disabled = true;
+  document.getElementById('btn-aud').disabled = true;
+
+  if (natural || G.trial > G.n) finishSession();
+  else { document.getElementById('trial-cnt').textContent = '0 of ' + totalTrials(); document.getElementById('prog-fill').style.width = '0%'; }
+}
+
+function nextTrial() {
+  if (!G.running || G.trial >= G.total) { stopGame(true); return; }
+
+  // Evaluate previous
+  if (G.trial > 0) evalTrial(G.trial - 1);
+
+  const tr = G.seq[G.trial];
+  G.posRes = false; G.audRes = false;
+  G.posResT = null; G.audResT = null;
+  G.trialStart = Date.now();
+
+  resetBtnStyles();
+  showStim(tr.pos, tr.letter);
+  updateProg();
+
+  G.timer = setTimeout(() => { G.trial++; nextTrial(); }, G.trialTime);
+}
+
+function showStim(pos, letter) {
+  clearGrid();
+  document.getElementById('c' + pos).classList.add('active');
+  if (G.mode !== 'position') {
+    speakLetter(letter);
+    showLetterBox(letter);
+    G.stimTimer = setTimeout(hideLetterBox, 450);
+  }
+  setTimeout(() => { const c = document.getElementById('c'+pos); if(c) c.classList.remove('active'); }, 450);
+}
+
+function evalTrial(idx) {
+  if (idx < G.n) return;
+  const cur = G.seq[idx], prev = G.seq[idx - G.n];
+  const pm = cur.pos    === prev.pos;
+  const am = cur.letter === prev.letter;
+
+  if (G.mode !== 'audio') {
+    if (pm  &&  G.posRes) G.pH++;
+    else if (pm  && !G.posRes) G.pM++;
+    else if (!pm &&  G.posRes) G.pFA++;
+    if (G.posRes && G.posResT !== null) G.posDelays.push(G.posResT);
+
+    // Flash button feedback
+    const btn = document.getElementById('btn-pos');
+    if (pm && G.posRes)  flashBtn(btn, 'correct');
+    else if (!pm && G.posRes) flashBtn(btn, 'wrong');
+  }
+
+  if (G.mode !== 'position') {
+    if (am  &&  G.audRes) G.aH++;
+    else if (am  && !G.audRes) G.aM++;
+    else if (!am &&  G.audRes) G.aFA++;
+    if (G.audRes && G.audResT !== null) G.audDelays.push(G.audResT);
+
+    const btn = document.getElementById('btn-aud');
+    if (am && G.audRes)  flashBtn(btn, 'correct');
+    else if (!am && G.audRes) flashBtn(btn, 'wrong');
+  }
+
+  updateLiveScore();
+}
+
+function flashBtn(btn, cls) {
+  btn.classList.add(cls);
+  setTimeout(() => btn.classList.remove(cls), 600);
+}
+
+function respond(type) {
+  if (!G.running || G.trial === 0) return;
+  const t = Date.now() - G.trialStart;
+  if (type === 'pos' && !G.posRes) {
+    G.posRes = true; G.posResT = t;
+    const b = document.getElementById('btn-pos');
+    b.classList.add('pressed');
+    setTimeout(() => b.classList.remove('pressed'), 180);
+  }
+  if (type === 'aud' && !G.audRes) {
+    G.audRes = true; G.audResT = t;
+    const b = document.getElementById('btn-aud');
+    b.classList.add('pressed');
+    setTimeout(() => b.classList.remove('pressed'), 180);
+  }
+}
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); toggleGame(); }
+  if (e.code === 'KeyA' || e.code === 'ArrowLeft')  respond('pos');
+  if (e.code === 'KeyL' || e.code === 'ArrowRight') respond('aud');
+});
+
+function clearGrid() { for(let i=0;i<9;i++) document.getElementById('c'+i).classList.remove('active'); }
+function showLetterBox(l) { const b=document.getElementById('letter-box'); b.textContent=l; b.classList.remove('hidden'); }
+function hideLetterBox()  { document.getElementById('letter-box').classList.add('hidden'); }
+function resetBtnStyles() {
+  document.getElementById('btn-pos').className = 'resp-btn pos-btn';
+  document.getElementById('btn-aud').className = 'resp-btn aud-btn';
+  document.getElementById('btn-pos').disabled  = false;
+  document.getElementById('btn-aud').disabled  = false;
+}
+function updateProg() {
+  document.getElementById('trial-cnt').textContent = G.trial + ' of ' + G.total;
+  document.getElementById('prog-fill').style.width  = (G.trial / G.total * 100) + '%';
+}
+function updateLiveScore() {
+  const pa = calcAcc(G.pH, G.pM, G.pFA), aa = calcAcc(G.aH, G.aM, G.aFA);
+  const parts = [];
+  if (G.mode !== 'audio')    parts.push('P:' + (pa >= 0 ? Math.round(pa)+'%' : '—'));
+  if (G.mode !== 'position') parts.push('A:' + (aa >= 0 ? Math.round(aa)+'%' : '—'));
+  document.getElementById('live-score').textContent = parts.join(' | ');
+}
+
+// ══════════════════════════════════════════════
+// FINISH SESSION
+// ══════════════════════════════════════════════
+function finishSession() {
+  const pa = calcAcc(G.pH, G.pM, G.pFA);
+  const aa = calcAcc(G.aH, G.aM, G.aFA);
+  const oa = G.mode === 'dual' ? (pa+aa)/2 : G.mode === 'position' ? pa : aa;
+  const dur = Math.round((Date.now() - G.sessStart) / 1000);
+  const apd = G.posDelays.length ? Math.round(G.posDelays.reduce((a,b)=>a+b,0)/G.posDelays.length) : null;
+  const aad = G.audDelays.length ? Math.round(G.audDelays.reduce((a,b)=>a+b,0)/G.audDelays.length) : null;
+
+  sessions.push({ date: new Date().toISOString(), n: G.n, mode: G.mode, pa, aa, oa, dur, apd, aad });
+  saveSessions();
+
+  // Auto-adjust N
+  let adj = '';
+  if (G.autoN && oa >= 0) {
+    if (oa >= 80) { G.n = Math.min(9, G.n+1); adj = '🎯 Stark! N erhöht auf ' + G.n; }
+    else if (oa < 50) { G.n = Math.max(1, G.n-1); adj = '📉 Level reduziert auf N=' + G.n; }
+    else adj = '⚖️ Level bleibt bei N=' + G.n;
+    saveCfg(); refreshHeader(); refreshNextSet();
+  }
+
+  // Overlay
+  const emoji = oa >= 80 ? '🏆' : oa >= 65 ? '✅' : oa >= 50 ? '💪' : '📚';
+  document.getElementById('ov-title').textContent = emoji + ' Session fertig!';
+  document.getElementById('ov-sub').textContent   = 'N-' + sessions[sessions.length-1].n + ' · ' + MODE_LABEL[G.mode];
+  document.getElementById('ov-pos').textContent   = pa >= 0 ? Math.round(pa)+'%' : '—';
+  document.getElementById('ov-aud').textContent   = aa >= 0 ? Math.round(aa)+'%' : '—';
+  document.getElementById('ov-n').textContent     = sessions[sessions.length-1].n;
+  document.getElementById('ov-dur').textContent   = fmtDur(dur);
+  document.getElementById('ov-adj').textContent   = adj;
+  document.getElementById('overlay').classList.add('show');
+
+  refreshSessList(); refreshTodayStats(); refreshNextSet();
+  document.getElementById('trial-cnt').textContent = '0 of ' + totalTrials();
+  document.getElementById('prog-fill').style.width = '0%';
+  document.getElementById('live-score').textContent = '';
+}
+
+function closeOverlay() { document.getElementById('overlay').classList.remove('show'); }
+
+// ══════════════════════════════════════════════
+// AUDIO (Speech Synthesis)
+// ══════════════════════════════════════════════
+let voices = [];
+if (window.speechSynthesis) {
+  voices = speechSynthesis.getVoices();
+  speechSynthesis.onvoiceschanged = () => { voices = speechSynthesis.getVoices(); };
+}
+
+function speakLetter(letter) {
+  if (!window.speechSynthesis) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(letter);
+  u.rate = 1.0; u.pitch = 1.0; u.volume = 1.0;
+  const en = voices.find(v => v.lang.startsWith('en'));
+  if (en) u.voice = en;
+  speechSynthesis.speak(u);
+}
+
+// ══════════════════════════════════════════════
+// STATS PANEL
+// ══════════════════════════════════════════════
+function todaySess() {
+  const td = new Date().toDateString();
+  return sessions.filter(s => new Date(s.date).toDateString() === td);
+}
+
+function refreshSessList() {
+  const today = todaySess();
+  const el = document.getElementById('sess-list');
+  if (!today.length) { el.innerHTML = '<div class="empty-hint">Noch keine Sessions heute.</div>'; return; }
+  el.innerHTML = today.map((s, i) => {
+    const type = (s.mode==='dual'?'D':s.mode==='position'?'P':'A') + s.n + 'B';
+    const ac = s.oa, cls = ac >= 80 ? 'g' : ac >= 50 ? 'y' : 'r';
+    return `<div class="sess-item">
+      <span class="si-num">${i+1}.</span>
+      <span class="si-type">${type}</span>
+      <span class="si-acc ${cls}">${Math.round(ac)}%</span>
+      <span class="si-n">${s.n}</span>
+      <span class="si-dur">${fmtDur(s.dur)}</span>
+    </div>`;
+  }).join('');
+}
+
+function refreshTodayStats() {
+  const today = todaySess();
+  document.getElementById('ts-sess').textContent = today.length;
+  if (!today.length) {
+    ['ts-start','ts-dur','ts-max','ts-avg'].forEach(id => document.getElementById(id).textContent = '—');
+    return;
+  }
+  const first = new Date(today[0].date);
+  document.getElementById('ts-start').textContent = first.toLocaleTimeString('de', {hour:'2-digit',minute:'2-digit'});
+  document.getElementById('ts-dur').textContent   = fmtDur(today.reduce((a,s) => a+s.dur, 0));
+  document.getElementById('ts-max').textContent   = Math.max(...today.map(s=>s.n)).toFixed(2);
+  document.getElementById('ts-avg').textContent   = (today.reduce((a,s)=>a+s.n,0)/today.length).toFixed(2);
+}
+
+// ══════════════════════════════════════════════
+// SETTINGS
+// ══════════════════════════════════════════════
+function changeTT(d) {
+  G.trialTime = Math.max(1000, Math.min(10000, G.trialTime + d * 1000));
+  saveCfg(); refreshNextSet();
+}
+
+function toggleAutoN() {
+  G.autoN = !G.autoN; saveCfg(); refreshAutoNBtn();
+}
+
+function refreshAutoNBtn() {
+  const b = document.getElementById('auto-n-btn');
+  b.textContent = G.autoN ? 'AN' : 'AUS';
+  b.className   = 'small-btn ' + (G.autoN ? 'on' : 'off');
+}
+
+function clearData() {
+  if (!confirm('Alle Trainingsdaten löschen?')) return;
+  sessions = []; saveSessions(); refreshSessList(); refreshTodayStats(); buildCharts();
+}
+
+// ══════════════════════════════════════════════
+// CHARTS
+// ══════════════════════════════════════════════
+const charts = {};
+
+const chartBase = () => ({
+  responsive: true, maintainAspectRatio: false,
+  plugins: {
+    legend: { display: false },
+    tooltip: { backgroundColor: '#111d2e', borderColor: '#1e2d45', borderWidth: 1, titleColor: '#e8f0fe', bodyColor: '#4a6080' }
+  },
+  scales: {
+    x: { grid: { color: 'rgba(30,45,69,0.8)' }, ticks: { color: '#4a6080', font: {size:10} } },
+    y: { grid: { color: 'rgba(30,45,69,0.8)' }, ticks: { color: '#4a6080', font: {size:10} } }
+  }
+});
+
+function buildCharts() {
+  // Level history
+  const lev = document.getElementById('c-level');
+  if (charts.lev) charts.lev.destroy();
+  const levData = sessions.slice(-40);
+  charts.lev = new Chart(lev, {
+    type: 'line',
+    data: {
+      labels: levData.map((_,i) => '#'+(i+1)),
+      datasets: [{
+        data: levData.map(s => s.n),
+        borderColor: '#00d4ff', backgroundColor: 'rgba(0,212,255,0.1)',
+        fill: true, tension: 0.4, pointBackgroundColor: '#00d4ff', pointRadius: 3
+      }]
+    },
+    options: { ...chartBase(), scales: { ...chartBase().scales, y: { ...chartBase().scales.y, min: 1, ticks: { stepSize: 1, color: '#4a6080', font:{size:10} } } } }
+  });
+
+  // Delay by N
+  const del = document.getElementById('c-delay');
+  if (charts.del) charts.del.destroy();
+  const byN = {};
+  sessions.forEach(s => {
+    if (!byN[s.n]) byN[s.n] = { p:[], a:[] };
+    if (s.apd) byN[s.n].p.push(s.apd);
+    if (s.aad) byN[s.n].a.push(s.aad);
+  });
+  const ns = Object.keys(byN).sort((a,b)=>a-b);
+  const avg = arr => arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : 0;
+  charts.del = new Chart(del, {
+    type: 'bar',
+    data: {
+      labels: ns.map(n => 'N=' + n),
+      datasets: [
+        { label: 'Position', data: ns.map(n => avg(byN[n].p)), backgroundColor: 'rgba(0,212,255,0.6)', borderRadius: 4 },
+        { label: 'Audio',    data: ns.map(n => avg(byN[n].a)), backgroundColor: 'rgba(245,166,35,0.6)', borderRadius: 4 }
+      ]
+    },
+    options: { ...chartBase(), plugins: { ...chartBase().plugins, legend: { display: true, labels: { color: '#4a6080', font:{size:10}, boxWidth:10 } } } }
+  });
+
+  // Accuracy per session
+  const acc = document.getElementById('c-acc');
+  if (charts.acc) charts.acc.destroy();
+  const accData = sessions.slice(-20);
+  charts.acc = new Chart(acc, {
+    type: 'bar',
+    data: {
+      labels: accData.map((_,i) => '#'+(i+1)),
+      datasets: [{
+        data: accData.map(s => Math.round(s.oa)),
+        backgroundColor: accData.map(s => s.oa >= 80 ? 'rgba(16,185,129,0.65)' : s.oa >= 50 ? 'rgba(245,166,35,0.65)' : 'rgba(239,68,68,0.65)'),
+        borderRadius: 4
+      }]
+    },
+    options: { ...chartBase(), scales: { ...chartBase().scales, y: { ...chartBase().scales.y, min:0, max:100 } } }
+  });
+}
+
+// ══════════════════════════════════════════════
+// PWA SETUP
+// ══════════════════════════════════════════════
+(function setupPWA() {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 192;
+  const cx = cv.getContext('2d');
+  cx.fillStyle = '#070c18'; cx.fillRect(0,0,192,192);
+  const draw = (x,y,color) => { cx.fillStyle=color; cx.beginPath(); cx.roundRect(x,y,72,72,8); cx.fill(); };
+  draw(24,24,'#00d4ff'); draw(96,24,'#f5a623');
+  cx.strokeStyle='#1e2d45'; cx.lineWidth=3; cx.beginPath(); cx.roundRect(24,96,72,72,8); cx.stroke();
+  draw(96,96,'#f5a623');
+
+  const iconUrl = cv.toDataURL('image/png');
+  document.getElementById('ati').href = iconUrl;
+
+  const blob = new Blob([JSON.stringify({
+    name:'Dual N-Back Training', short_name:'N-Back',
+    description:'Kognitives Arbeitsgedächtnis-Training',
+    start_url:'.', display:'standalone',
+    background_color:'#070c18', theme_color:'#070c18',
+    icons:[{src:iconUrl, sizes:'192x192', type:'image/png'}]
+  })], {type:'application/json'});
+  document.getElementById('mf').href = URL.createObjectURL(blob);
+})();
+</script>
+</body>
+</html>
