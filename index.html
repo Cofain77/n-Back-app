@@ -101,6 +101,13 @@
     .ov-card.a .v { color: var(--amber); }
     .ov-card.g .v { color: var(--green); }
     .ov-adj { font-size: 13px; color: var(--muted); margin-bottom: 20px; text-align: center; line-height: 1.5; }
+    .ov-total-row { width: 100%; max-width: 300px; margin-bottom: 10px; }
+    .ov-total-inner { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px 20px; display: flex; align-items: center; justify-content: space-around; }
+    .ov-total-inner .v { font-family: var(--font-mono); font-size: 32px; font-weight: 700; }
+    .ov-total-inner .l { font-size: 10px; letter-spacing: 0.5px; color: var(--muted); margin-top: 4px; }
+    .ov-delta-up   { color: var(--green) !important; }
+    .ov-delta-down { color: var(--red) !important; }
+    .ov-delta-same { color: var(--muted) !important; }
 
     /* ── STATS PANEL ── */
     #panel-stats { padding: 14px; gap: 14px; }
@@ -179,6 +186,8 @@
       <div class="cell" id="c6"></div><div class="cell" id="c7"></div><div class="cell" id="c8"></div>
     </div>
   </div>
+
+  <div class="letter-box hidden" id="letter-box"></div>
 
   <div class="resp-btns" id="resp-btns">
     <button class="resp-btn pos-btn" id="btn-pos" onclick="respond('pos')" disabled>
@@ -271,6 +280,18 @@
     <div class="ov-card a"><div class="v" id="ov-aud">—</div><div class="l">AUDIO</div></div>
     <div class="ov-card g"><div class="v" id="ov-n">—</div><div class="l">N-LEVEL</div></div>
     <div class="ov-card" ><div class="v" id="ov-dur">—</div><div class="l">DAUER</div></div>
+  </div>
+  <div class="ov-total-row">
+    <div class="ov-total-inner">
+      <div style="text-align:center">
+        <div class="v" id="ov-overall">—</div>
+        <div class="l">GESAMT</div>
+      </div>
+      <div style="text-align:center">
+        <div class="v" id="ov-delta" style="font-size:22px">—</div>
+        <div class="l">VS. VORHERIGE</div>
+      </div>
+    </div>
   </div>
   <div class="ov-adj" id="ov-adj"></div>
   <button class="start-btn" onclick="closeOverlay()">Weiter trainieren</button>
@@ -389,6 +410,11 @@ function startGame() {
 function stopGame(natural = false) {
   clearTimeout(G.timer); clearTimeout(G.stimTimer);
   G.running = false;
+
+  // On manual stop, evaluate the current in-progress trial (natural stop already
+  // evaluated it by moving evalTrial before the early-exit check in nextTrial)
+  if (!natural && G.trial > 0) evalTrial(G.trial);
+
   clearGrid(); hideLetterBox();
 
   const sb = document.getElementById('start-btn');
@@ -401,10 +427,10 @@ function stopGame(natural = false) {
 }
 
 function nextTrial() {
-  if (!G.running || G.trial >= G.total) { stopGame(true); return; }
-
-  // Evaluate previous
+  // Evaluate the previous trial first (so the last trial is never skipped)
   if (G.trial > 0) evalTrial(G.trial - 1);
+
+  if (!G.running || G.trial >= G.total) { stopGame(true); return; }
 
   const tr = G.seq[G.trial];
   G.posRes = false; G.audRes = false;
@@ -502,7 +528,7 @@ document.addEventListener('keydown', e => {
 
 function clearGrid() { for(let i=0;i<9;i++) document.getElementById('c'+i).classList.remove('active'); }
 function showLetterBox(l) { const b=document.getElementById('letter-box'); b.textContent=l; b.classList.remove('hidden'); }
-function hideLetterBox()  { document.getElementById('letter-box').classList.add('hidden'); }
+function hideLetterBox()  { const b=document.getElementById('letter-box'); if(b) b.classList.add('hidden'); }
 function resetBtnStyles() {
   document.getElementById('btn-pos').className = 'resp-btn pos-btn';
   document.getElementById('btn-aud').className = 'resp-btn aud-btn';
@@ -532,6 +558,9 @@ function finishSession() {
   const apd = G.posDelays.length ? Math.round(G.posDelays.reduce((a,b)=>a+b,0)/G.posDelays.length) : null;
   const aad = G.audDelays.length ? Math.round(G.audDelays.reduce((a,b)=>a+b,0)/G.audDelays.length) : null;
 
+  // Find the last session of the same mode for improvement comparison (before pushing current)
+  const prevSameModeSession = [...sessions].reverse().find(s => s.mode === G.mode) || null;
+
   sessions.push({ date: new Date().toISOString(), n: G.n, mode: G.mode, pa, aa, oa, dur, apd, aad });
   saveSessions();
 
@@ -553,6 +582,30 @@ function finishSession() {
   document.getElementById('ov-n').textContent     = sessions[sessions.length-1].n;
   document.getElementById('ov-dur').textContent   = fmtDur(dur);
   document.getElementById('ov-adj').textContent   = adj;
+
+  // Overall score
+  document.getElementById('ov-overall').textContent = oa >= 0 ? Math.round(oa)+'%' : '—';
+
+  // Improvement delta vs previous session of same mode
+  const deltaEl = document.getElementById('ov-delta');
+  deltaEl.className = 'v';
+  if (prevSameModeSession && prevSameModeSession.oa >= 0 && oa >= 0) {
+    const delta = Math.round(oa - prevSameModeSession.oa);
+    if (delta > 0) {
+      deltaEl.textContent = '▲ +' + delta + '%';
+      deltaEl.classList.add('ov-delta-up');
+    } else if (delta < 0) {
+      deltaEl.textContent = '▼ ' + delta + '%';
+      deltaEl.classList.add('ov-delta-down');
+    } else {
+      deltaEl.textContent = '= 0%';
+      deltaEl.classList.add('ov-delta-same');
+    }
+  } else {
+    deltaEl.textContent = 'Erste';
+    deltaEl.classList.add('ov-delta-same');
+  }
+
   document.getElementById('overlay').classList.add('show');
 
   refreshSessList(); refreshTodayStats(); refreshNextSet();
