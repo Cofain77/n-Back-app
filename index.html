@@ -457,7 +457,7 @@ const saveCfg = () => localStorage.setItem('nb_cfg', JSON.stringify({ n: G.n, tr
 const saveSessions = () => localStorage.setItem('nb_v2', JSON.stringify(sessions));
 
 // ── helpers ──
-const totalTrials = () => 20 + 3 * G.n;
+const totalTrials = () => G.n + 10;
 const ttSec       = ()  => (G.trialTime / 1000).toFixed(1);
 const setDur      = ()  => Math.round(totalTrials() * G.trialTime / 1000);
 const fmtDur = s  => { const m = Math.floor(s/60); return m + 'm ' + String(s%60).padStart(2,'0') + 's'; };
