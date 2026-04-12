@@ -119,7 +119,7 @@
     .ov-card.g .v { color: var(--green); }
     .ov-adj { font-size: 13px; color: var(--muted); margin-bottom: 20px; text-align: center; line-height: 1.5; }
     .ov-total-row { width: 100%; max-width: 300px; margin-bottom: 10px; }
-    .ov-total-inner { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px 20px; display: flex; align-items: center; justify-content: space-around; }
+    .ov-total-inner { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px 10px; display: flex; align-items: center; justify-content: space-around; }
     .ov-total-inner .v { font-family: var(--font-mono); font-size: 32px; font-weight: 700; }
     .ov-total-inner .l { font-size: 10px; letter-spacing: 0.5px; color: var(--muted); margin-top: 4px; }
     .ov-delta-up   { color: var(--green) !important; }
@@ -305,8 +305,13 @@
         <div class="l">GESAMT</div>
       </div>
       <div style="text-align:center">
-        <div class="v" id="ov-delta" style="font-size:22px">—</div>
-        <div class="l">VS. VORHERIGE</div>
+        <div class="v" id="ov-delta" style="font-size:20px">—</div>
+        <div class="l">VS. VORH.</div>
+      </div>
+      <div style="text-align:center">
+        <div class="v" id="ov-g" style="font-size:20px">—</div>
+        <div class="l" id="ov-g-size" style="font-size:9px;margin-top:2px;color:var(--muted)"></div>
+        <div class="l">HEDGES' g</div>
       </div>
     </div>
   </div>
@@ -587,6 +592,21 @@ function updateLiveScore() {
 // ══════════════════════════════════════════════
 // FINISH SESSION
 // ══════════════════════════════════════════════
+
+// Hedges' g: how many SDs the current session deviates from historical mean.
+// Requires ≥ 2 previous sessions of the same mode to compute.
+function calcHedgesG(current, prevSessions) {
+  const vals = prevSessions.filter(s => s.oa >= 0).map(s => s.oa);
+  if (vals.length < 2) return null;
+  const n    = vals.length;
+  const mean = vals.reduce((a, b) => a + b, 0) / n;
+  const sd   = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1));
+  if (sd === 0) return null;
+  const d = (current - mean) / sd;
+  const j = 1 - (3 / (4 * (n - 1) - 1)); // Hedges' correction factor
+  return d * j;
+}
+
 function finishSession() {
   const pa = calcAcc(G.pH, G.pM, G.pFA);
   const aa = calcAcc(G.aH, G.aM, G.aFA);
@@ -595,8 +615,9 @@ function finishSession() {
   const apd = G.posDelays.length ? Math.round(G.posDelays.reduce((a,b)=>a+b,0)/G.posDelays.length) : null;
   const aad = G.audDelays.length ? Math.round(G.audDelays.reduce((a,b)=>a+b,0)/G.audDelays.length) : null;
 
-  // Find the last session of the same mode for improvement comparison (before pushing current)
-  const prevSameModeSession = [...sessions].reverse().find(s => s.mode === G.mode) || null;
+  // Collect same-mode sessions BEFORE pushing current (used for both delta and Hedges' g)
+  const prevSameMode        = sessions.filter(s => s.mode === G.mode);
+  const prevSameModeSession = prevSameMode.length ? prevSameMode[prevSameMode.length - 1] : null;
 
   sessions.push({ date: new Date().toISOString(), n: G.n, mode: G.mode, pa, aa, oa, dur, apd, aad });
   saveSessions();
@@ -641,6 +662,22 @@ function finishSession() {
   } else {
     deltaEl.textContent = 'Erste';
     deltaEl.classList.add('ov-delta-same');
+  }
+
+  // Hedges' g vs own historical baseline (same mode)
+  const gEl     = document.getElementById('ov-g');
+  const gSizeEl = document.getElementById('ov-g-size');
+  gEl.className = 'v';
+  const g = calcHedgesG(oa, prevSameMode);
+  if (g !== null) {
+    const abs  = Math.abs(g);
+    gEl.textContent = (g >= 0 ? '+' : '') + g.toFixed(2);
+    gEl.classList.add(g >= 0 ? 'ov-delta-up' : 'ov-delta-down');
+    gSizeEl.textContent = abs >= 0.8 ? 'groß' : abs >= 0.5 ? 'mittel' : abs >= 0.2 ? 'klein' : 'minimal';
+  } else {
+    gEl.textContent     = '—';
+    gSizeEl.textContent = '≥ 2 Sessions nötig';
+    gEl.classList.add('ov-delta-same');
   }
 
   document.getElementById('overlay').classList.add('show');
