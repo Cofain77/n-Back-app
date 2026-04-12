@@ -81,8 +81,8 @@
     .resp-btn.pos-btn.pressed { background: rgba(0,212,255,0.18); border-color: var(--cyan); transform: scale(0.95); }
     .resp-btn.aud-btn { border-color: rgba(245,166,35,0.25); }
     .resp-btn.aud-btn.pressed { background: rgba(245,166,35,0.18); border-color: var(--amber); transform: scale(0.95); }
-    .resp-btn.correct { border-color: var(--green) !important; background: rgba(16,185,129,0.12) !important; }
-    .resp-btn.wrong   { border-color: var(--red)   !important; background: rgba(239,68,68,0.12)  !important; }
+    .resp-btn.correct { border-color: var(--green) !important; background: rgba(16,185,129,0.25) !important; box-shadow: 0 0 16px rgba(16,185,129,0.3); }
+    .resp-btn.wrong   { border-color: var(--red)   !important; background: rgba(239,68,68,0.2)  !important; box-shadow: 0 0 16px rgba(239,68,68,0.25); }
 
     .start-btn { padding: 15px 44px; background: var(--cyan); color: #000; border: none; border-radius: 14px; font-size: 15px; font-weight: 800; cursor: pointer; letter-spacing: 0.5px; box-shadow: 0 0 24px rgba(0,212,255,0.3); transition: transform .1s, box-shadow .1s; }
     .start-btn:active { transform: scale(0.96); }
@@ -147,9 +147,7 @@
   <div class="logo"><div></div><div></div><div></div><div></div></div>
   <div class="title">
     Dual N-Back
-    <small id="mode-label">Dual Mode</small>
   </div>
-  <button class="mode-btn dual" id="mode-btn" onclick="cycleMode()">DUAL</button>
   <div class="n-ctrl">
     <button onclick="changeN(-1)">−</button>
     <span class="n-val" id="n-disp">2</span>
@@ -181,8 +179,6 @@
       <div class="cell" id="c6"></div><div class="cell" id="c7"></div><div class="cell" id="c8"></div>
     </div>
   </div>
-
-  <div class="letter-box hidden" id="letter-box">C</div>
 
   <div class="resp-btns" id="resp-btns">
     <button class="resp-btn pos-btn" id="btn-pos" onclick="respond('pos')" disabled>
@@ -303,10 +299,10 @@ let sessions = JSON.parse(localStorage.getItem('nb_v2') || '[]');
 let cfg      = JSON.parse(localStorage.getItem('nb_cfg')  || '{}');
 if (cfg.n)         G.n         = cfg.n;
 if (cfg.trialTime) G.trialTime = cfg.trialTime;
-if (cfg.mode)      G.mode      = cfg.mode;
 if (cfg.autoN !== undefined) G.autoN = cfg.autoN;
+G.mode = 'dual';
 
-const saveCfg = () => localStorage.setItem('nb_cfg', JSON.stringify({ n: G.n, trialTime: G.trialTime, mode: G.mode, autoN: G.autoN }));
+const saveCfg = () => localStorage.setItem('nb_cfg', JSON.stringify({ n: G.n, trialTime: G.trialTime, autoN: G.autoN }));
 const saveSessions = () => localStorage.setItem('nb_v2', JSON.stringify(sessions));
 
 // ── helpers ──
@@ -324,7 +320,6 @@ refreshNextSet();
 refreshSessList();
 refreshTodayStats();
 refreshAutoNBtn();
-refreshRespBtns();
 
 // ══════════════════════════════════════════════
 // TABS
@@ -342,27 +337,12 @@ function switchTab(id) {
 // ══════════════════════════════════════════════
 function refreshHeader() {
   document.getElementById('n-disp').textContent = G.n;
-  const mb = document.getElementById('mode-btn');
-  mb.textContent = G.mode === 'dual' ? 'DUAL' : G.mode === 'position' ? 'POS' : 'AUD';
-  mb.className = 'mode-btn ' + G.mode;
-  document.getElementById('mode-label').textContent = MODE_LABEL[G.mode];
 }
 
 function changeN(d) {
   if (G.running) return;
   G.n = Math.max(1, Math.min(9, G.n + d));
   saveCfg(); refreshHeader(); refreshNextSet();
-}
-
-function cycleMode() {
-  if (G.running) return;
-  G.mode = MODES[(MODES.indexOf(G.mode) + 1) % 3];
-  saveCfg(); refreshHeader(); refreshRespBtns();
-}
-
-function refreshRespBtns() {
-  document.getElementById('btn-pos').style.display = G.mode === 'audio'    ? 'none' : '';
-  document.getElementById('btn-aud').style.display = G.mode === 'position' ? 'none' : '';
 }
 
 function refreshNextSet() {
@@ -441,11 +421,7 @@ function nextTrial() {
 function showStim(pos, letter) {
   clearGrid();
   document.getElementById('c' + pos).classList.add('active');
-  if (G.mode !== 'position') {
-    speakLetter(letter);
-    showLetterBox(letter);
-    G.stimTimer = setTimeout(hideLetterBox, 450);
-  }
+  speakLetter(letter);
   setTimeout(() => { const c = document.getElementById('c'+pos); if(c) c.classList.remove('active'); }, 450);
 }
 
@@ -489,17 +465,31 @@ function flashBtn(btn, cls) {
 function respond(type) {
   if (!G.running || G.trial === 0) return;
   const t = Date.now() - G.trialStart;
+  const canCheck = G.trial >= G.n;
+
   if (type === 'pos' && !G.posRes) {
     G.posRes = true; G.posResT = t;
     const b = document.getElementById('btn-pos');
-    b.classList.add('pressed');
-    setTimeout(() => b.classList.remove('pressed'), 180);
+    if (canCheck) {
+      const match = G.seq[G.trial].pos === G.seq[G.trial - G.n].pos;
+      b.classList.add(match ? 'correct' : 'wrong');
+      setTimeout(() => b.classList.remove('correct', 'wrong'), 700);
+    } else {
+      b.classList.add('pressed');
+      setTimeout(() => b.classList.remove('pressed'), 180);
+    }
   }
   if (type === 'aud' && !G.audRes) {
     G.audRes = true; G.audResT = t;
     const b = document.getElementById('btn-aud');
-    b.classList.add('pressed');
-    setTimeout(() => b.classList.remove('pressed'), 180);
+    if (canCheck) {
+      const match = G.seq[G.trial].letter === G.seq[G.trial - G.n].letter;
+      b.classList.add(match ? 'correct' : 'wrong');
+      setTimeout(() => b.classList.remove('correct', 'wrong'), 700);
+    } else {
+      b.classList.add('pressed');
+      setTimeout(() => b.classList.remove('pressed'), 180);
+    }
   }
 }
 
@@ -585,11 +575,15 @@ if (window.speechSynthesis) {
 function speakLetter(letter) {
   if (!window.speechSynthesis) return;
   speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(letter);
-  u.rate = 1.0; u.pitch = 1.0; u.volume = 1.0;
-  const en = voices.find(v => v.lang.startsWith('en'));
-  if (en) u.voice = en;
-  speechSynthesis.speak(u);
+  setTimeout(() => {
+    const u = new SpeechSynthesisUtterance(letter);
+    u.rate = 0.7;
+    u.pitch = 1.0;
+    u.volume = 1.0;
+    const en = voices.find(v => v.lang.startsWith('en-'));
+    if (en) u.voice = en;
+    speechSynthesis.speak(u);
+  }, 50);
 }
 
 // ══════════════════════════════════════════════
