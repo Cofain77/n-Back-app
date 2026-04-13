@@ -411,10 +411,8 @@ async function _loadCloudSessions() {
     .eq('user_id', currentUser.id)
     .order('date', { ascending: true });
   if (error) { console.warn('Load error:', error.message); return; }
-  if (data?.length) {
-    sessions = data;
-    localStorage.setItem('nb_v2', JSON.stringify(sessions));
-  }
+  sessions = data || [];
+  localStorage.setItem('nb_v2', JSON.stringify(sessions));
 }
 
 async function _syncSession(s) {
