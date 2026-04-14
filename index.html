@@ -421,6 +421,7 @@ async function doLogout() {
 }
 
 async function _onSignedIn() {
+  await _migrateLocalSessions();
   await _flushPending();
   await _loadCloudSessions();
   document.getElementById('auth-overlay').classList.remove('show');
@@ -431,6 +432,29 @@ async function _onSignedIn() {
   lbl.style.display = 'block';
   document.getElementById('logout-btn').style.display = 'block';
   refreshSessList(); refreshTodayStats();
+}
+
+async function _migrateLocalSessions() {
+  if (!currentUser) return;
+  const key = 'nb_migrated_' + currentUser.id;
+  if (localStorage.getItem(key)) return; // already done for this user
+  const local = JSON.parse(localStorage.getItem('nb_v2') || '[]');
+  if (!local.length) { localStorage.setItem(key, '1'); return; }
+  let allOk = true;
+  for (const s of local) {
+    const { error } = await sb.from('nb_sessions').insert({
+      user_id: currentUser.id,
+      date: s.date, n: s.n, mode: s.mode || 'dual',
+      pa: s.pa ?? null, aa: s.aa ?? null, oa: s.oa ?? null,
+      dur: s.dur ?? null, apd: s.apd ?? null, aad: s.aad ?? null,
+    });
+    if (error && !error.message.includes('duplicate')) {
+      console.warn('Migration failed for', s.date, error.message);
+      allOk = false;
+    }
+  }
+  if (allOk) localStorage.setItem(key, '1');
+  console.log('Migration done:', local.length, 'sessions, allOk:', allOk);
 }
 
 function _onSignedOut() {
