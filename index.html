@@ -406,8 +406,8 @@ function _translateAuthError(msg) {
     return 'Diese E-Mail ist bereits registriert';
   if (m.includes('password') && m.includes('6'))
     return 'Passwort muss mindestens 6 Zeichen haben';
-  if (m.includes('failed to fetch') || m.includes('network') || m.includes('fetch'))
-    return 'Keine Verbindung — bitte Internet prüfen';
+  if (m.includes('failed to fetch') || m.includes('network') || m.includes('fetch') || m.includes('load failed'))
+    return 'Verbindung fehlgeschlagen — Supabase-Projekt möglicherweise pausiert';
   if (m.includes('email') && m.includes('invalid'))
     return 'Ungültige E-Mail-Adresse';
   if (m.includes('too many'))
