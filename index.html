@@ -307,21 +307,29 @@
 
 <!-- AUTH OVERLAY -->
 <div class="overlay show" id="auth-overlay">
-  <div style="margin-bottom:28px;text-align:center">
-    <div class="logo" style="margin:0 auto 14px;width:48px;height:48px"><div></div><div></div><div></div><div></div></div>
-    <div style="font-size:22px;font-weight:700" id="auth-title">Willkommen</div>
-    <div style="font-size:13px;color:var(--muted);margin-top:5px">Melde dich an, um zu trainieren</div>
+  <!-- Loading spinner shown while checking existing session -->
+  <div id="auth-loading" style="text-align:center">
+    <div class="logo" style="margin:0 auto 18px;width:48px;height:48px"><div></div><div></div><div></div><div></div></div>
+    <div style="font-size:15px;color:var(--muted)">Laden…</div>
   </div>
-  <div style="width:100%;max-width:300px;display:flex;flex-direction:column;gap:12px">
-    <input type="email"    id="auth-email" class="auth-input" placeholder="E-Mail" autocomplete="email">
-    <input type="password" id="auth-pw"    class="auth-input" placeholder="Passwort (min. 6 Zeichen)" autocomplete="current-password">
-    <button class="start-btn" id="auth-submit" onclick="authSubmit()" style="width:100%;margin-top:4px">Anmelden</button>
-    <div style="text-align:center">
-      <button id="auth-toggle-btn" onclick="toggleAuthMode()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline">
-        Noch kein Konto? Registrieren
-      </button>
+  <!-- Login form (hidden until we know no session exists) -->
+  <div id="auth-form" style="display:none;flex-direction:column;align-items:center;width:100%">
+    <div style="margin-bottom:28px;text-align:center">
+      <div class="logo" style="margin:0 auto 14px;width:48px;height:48px"><div></div><div></div><div></div><div></div></div>
+      <div style="font-size:22px;font-weight:700" id="auth-title">Willkommen</div>
+      <div style="font-size:13px;color:var(--muted);margin-top:5px">Melde dich an, um zu trainieren</div>
     </div>
-    <div id="auth-err" style="font-size:12px;text-align:center;min-height:16px;line-height:1.4"></div>
+    <div style="width:100%;max-width:300px;display:flex;flex-direction:column;gap:12px">
+      <input type="email"    id="auth-email" class="auth-input" placeholder="E-Mail" autocomplete="email">
+      <input type="password" id="auth-pw"    class="auth-input" placeholder="Passwort (min. 6 Zeichen)" autocomplete="current-password">
+      <button class="start-btn" id="auth-submit" onclick="authSubmit()" style="width:100%;margin-top:4px">Anmelden</button>
+      <div style="text-align:center">
+        <button id="auth-toggle-btn" onclick="toggleAuthMode()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline">
+          Noch kein Konto? Registrieren
+        </button>
+      </div>
+      <div id="auth-err" style="font-size:12px;text-align:center;min-height:16px;line-height:1.4"></div>
+    </div>
   </div>
 </div>
 
@@ -336,10 +344,18 @@ const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
 let currentUser = null;
 let _authMode   = 'login';
 
+function _showAuthForm() {
+  document.getElementById('auth-loading').style.display = 'none';
+  document.getElementById('auth-form').style.display = 'flex';
+}
+
 // Check existing session on load, then listen for changes
 (async () => {
-  const { data: { session } } = await sb.auth.getSession();
-  if (session?.user) { currentUser = session.user; await _onSignedIn(); }
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session?.user) { currentUser = session.user; await _onSignedIn(); }
+    else { _showAuthForm(); }
+  } catch(e) { _showAuthForm(); }
   sb.auth.onAuthStateChange(async (evt, sess) => {
     if (evt === 'SIGNED_IN')  { currentUser = sess.user; await _onSignedIn(); }
     if (evt === 'SIGNED_OUT') { currentUser = null;       _onSignedOut(); }
@@ -358,10 +374,10 @@ async function authSubmit() {
     : await sb.auth.signUp({ email, password: pw });
   btn.disabled = false;
   btn.textContent = _authMode === 'login' ? 'Anmelden' : 'Registrieren';
-  if (error) { _authErr(error.message); return; }
+  if (error) { _authErr(_translateAuthError(error.message)); return; }
   if (_authMode === 'register' && !data.session) {
     errEl.style.color = 'var(--green)';
-    errEl.textContent = '✓ Bestätigungs-E-Mail gesendet — bitte Postfach prüfen!';
+    errEl.textContent = '✓ Konto erstellt — du kannst dich jetzt anmelden!';
   }
 }
 
@@ -379,14 +395,37 @@ function _authErr(msg) {
   el.style.color = 'var(--red)'; el.textContent = msg;
 }
 
+function _translateAuthError(msg) {
+  if (!msg) return 'Unbekannter Fehler';
+  const m = msg.toLowerCase();
+  if (m.includes('invalid login') || m.includes('invalid credentials') || m.includes('wrong password'))
+    return 'E-Mail oder Passwort falsch';
+  if (m.includes('user not found') || m.includes('no user found'))
+    return 'Kein Konto mit dieser E-Mail gefunden';
+  if (m.includes('already registered') || m.includes('user already exists'))
+    return 'Diese E-Mail ist bereits registriert';
+  if (m.includes('password') && m.includes('6'))
+    return 'Passwort muss mindestens 6 Zeichen haben';
+  if (m.includes('failed to fetch') || m.includes('network') || m.includes('fetch'))
+    return 'Keine Verbindung — bitte Internet prüfen';
+  if (m.includes('email') && m.includes('invalid'))
+    return 'Ungültige E-Mail-Adresse';
+  if (m.includes('too many'))
+    return 'Zu viele Versuche — bitte kurz warten';
+  return msg;
+}
+
 async function doLogout() {
   if (G.running) stopGame();
   await sb.auth.signOut();
 }
 
 async function _onSignedIn() {
+  await _flushPending();
   await _loadCloudSessions();
   document.getElementById('auth-overlay').classList.remove('show');
+  document.getElementById('auth-loading').style.display = 'flex';
+  document.getElementById('auth-form').style.display = 'none';
   const lbl = document.getElementById('user-lbl');
   lbl.textContent = currentUser.email;
   lbl.style.display = 'block';
@@ -395,6 +434,7 @@ async function _onSignedIn() {
 }
 
 function _onSignedOut() {
+  _showAuthForm();
   document.getElementById('auth-overlay').classList.add('show');
   document.getElementById('user-lbl').style.display   = 'none';
   document.getElementById('logout-btn').style.display = 'none';
@@ -416,14 +456,40 @@ async function _loadCloudSessions() {
 }
 
 async function _syncSession(s) {
-  if (!currentUser) return;
+  if (!currentUser) { _addPending(s); return; }
   const { error } = await sb.from('nb_sessions').insert({
     user_id: currentUser.id,
     date: s.date, n: s.n, mode: s.mode,
     pa: s.pa ?? null, aa: s.aa ?? null, oa: s.oa ?? null,
     dur: s.dur ?? null, apd: s.apd ?? null, aad: s.aad ?? null,
   });
-  if (error) console.warn('Sync failed:', error.message);
+  if (error) { console.warn('Sync failed:', error.message); _addPending(s); }
+}
+
+function _addPending(s) {
+  const q = JSON.parse(localStorage.getItem('nb_pending') || '[]');
+  if (!q.find(x => x.date === s.date)) { q.push(s); localStorage.setItem('nb_pending', JSON.stringify(q)); }
+}
+
+async function _flushPending() {
+  if (!currentUser) return;
+  const q = JSON.parse(localStorage.getItem('nb_pending') || '[]');
+  if (!q.length) return;
+  const ok = [];
+  for (const s of q) {
+    const { error } = await sb.from('nb_sessions').insert({
+      user_id: currentUser.id,
+      date: s.date, n: s.n, mode: s.mode,
+      pa: s.pa ?? null, aa: s.aa ?? null, oa: s.oa ?? null,
+      dur: s.dur ?? null, apd: s.apd ?? null, aad: s.aad ?? null,
+    });
+    if (!error) ok.push(s.date);
+  }
+  if (ok.length) {
+    const remaining = q.filter(x => !ok.includes(x.date));
+    localStorage.setItem('nb_pending', JSON.stringify(remaining));
+    console.log(`Flushed ${ok.length} pending session(s)`);
+  }
 }
 
 // ══════════════════════════════════════════════
