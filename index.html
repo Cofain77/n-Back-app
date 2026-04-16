@@ -1023,6 +1023,12 @@ function buildCharts() {
   })], {type:'application/json'});
   document.getElementById('mf').href = URL.createObjectURL(blob);
 })();
+
+// Auto-retry pending syncs when app becomes visible or comes online
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') _flushPending();
+});
+window.addEventListener('online', () => _flushPending());
 </script>
 </body>
 </html>
