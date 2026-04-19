@@ -368,17 +368,32 @@ async function authSubmit() {
   const errEl = document.getElementById('auth-err');
   const btn   = document.getElementById('auth-submit');
   if (!email || !pw) { _authErr('E-Mail und Passwort eingeben'); return; }
-  btn.textContent = '…'; btn.disabled = true; errEl.textContent = '';
-  const { data, error } = _authMode === 'login'
-    ? await sb.auth.signInWithPassword({ email, password: pw })
-    : await sb.auth.signUp({ email, password: pw });
+  btn.disabled = true; errEl.textContent = '';
+
+  // Retry up to 3 times (Supabase free tier may need a moment to wake up)
+  let lastError = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    btn.textContent = attempt > 1 ? `Verbinden… (${attempt}/3)` : '…';
+    const { data, error } = _authMode === 'login'
+      ? await sb.auth.signInWithPassword({ email, password: pw })
+      : await sb.auth.signUp({ email, password: pw });
+    if (!error) {
+      btn.disabled = false;
+      btn.textContent = _authMode === 'login' ? 'Anmelden' : 'Registrieren';
+      if (_authMode === 'register' && !data.session) {
+        errEl.style.color = 'var(--green)';
+        errEl.textContent = '✓ Konto erstellt — du kannst dich jetzt anmelden!';
+      }
+      return;
+    }
+    lastError = error;
+    const isNetwork = error.message.toLowerCase().includes('fetch') || error.message.toLowerCase().includes('load failed') || error.message.toLowerCase().includes('network');
+    if (!isNetwork) break; // don't retry wrong password etc.
+    if (attempt < 3) await new Promise(r => setTimeout(r, 3000 * attempt));
+  }
   btn.disabled = false;
   btn.textContent = _authMode === 'login' ? 'Anmelden' : 'Registrieren';
-  if (error) { _authErr(_translateAuthError(error.message)); return; }
-  if (_authMode === 'register' && !data.session) {
-    errEl.style.color = 'var(--green)';
-    errEl.textContent = '✓ Konto erstellt — du kannst dich jetzt anmelden!';
-  }
+  _authErr(_translateAuthError(lastError.message));
 }
 
 function toggleAuthMode() {
@@ -406,8 +421,8 @@ function _translateAuthError(msg) {
     return 'Diese E-Mail ist bereits registriert';
   if (m.includes('password') && m.includes('6'))
     return 'Passwort muss mindestens 6 Zeichen haben';
-  if (m.includes('failed to fetch') || m.includes('network') || m.includes('fetch') || m.includes('load failed'))
-    return 'Verbindung fehlgeschlagen — Supabase-Projekt möglicherweise pausiert';
+  if (m.includes('failed to fetch') || m.includes('network') || m.includes('fetch') || m.includes('load failed') || m.includes('login failed'))
+    return 'Verbindung fehlgeschlagen — bitte nochmal versuchen';
   if (m.includes('email') && m.includes('invalid'))
     return 'Ungültige E-Mail-Adresse';
   if (m.includes('too many'))
