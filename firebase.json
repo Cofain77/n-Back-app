@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "dual-n-back",
     "public": ".",
     "ignore": [
       "firebase.json",
