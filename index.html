@@ -9,7 +9,9 @@
   <title>Dual N-Back</title>
   <link id="mf" rel="manifest">
   <link rel="apple-touch-icon" id="ati">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -422,24 +424,28 @@
 
 <script>
 // ══════════════════════════════════════════════
-// SUPABASE AUTH
+// FIREBASE AUTH + FIRESTORE
 // ══════════════════════════════════════════════
-const SUPA_URL = 'https://emsbvacrqijebbwrjzwe.supabase.co';
-const SUPA_KEY = 'sb_publishable_SiQOFbmrqzaveaoaNfQmEQ_zjxKIHd5';
-const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+const firebaseConfig = {
+  apiKey:            "DEIN_API_KEY",
+  authDomain:        "DEIN_PROJEKT.firebaseapp.com",
+  projectId:         "DEIN_PROJEKT_ID",
+  storageBucket:     "DEIN_PROJEKT.appspot.com",
+  messagingSenderId: "DEINE_SENDER_ID",
+  appId:             "DEINE_APP_ID"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db   = firebase.firestore();
 
 let currentUser = null;
 let _authMode   = 'login';
 
-// Check existing session on load, then listen for changes
-(async () => {
-  const { data: { session } } = await sb.auth.getSession();
-  if (session?.user) { currentUser = session.user; await _onSignedIn(); }
-  sb.auth.onAuthStateChange(async (evt, sess) => {
-    if (evt === 'SIGNED_IN')  { currentUser = sess.user; await _onSignedIn(); }
-    if (evt === 'SIGNED_OUT') { currentUser = null;       _onSignedOut(); }
-  });
-})();
+// onAuthStateChanged fires on load with current user (or null)
+auth.onAuthStateChanged(async (user) => {
+  if (user) { currentUser = user; await _onSignedIn(); }
+  else      { currentUser = null; _onSignedOut(); }
+});
 
 async function authSubmit() {
   const email = document.getElementById('auth-email').value.trim();
@@ -448,24 +454,30 @@ async function authSubmit() {
   const btn   = document.getElementById('auth-submit');
   if (!email || !pw) { _authErr('E-Mail und Passwort eingeben'); return; }
   btn.textContent = '…'; btn.disabled = true; errEl.textContent = '';
-  const { data, error } = _authMode === 'login'
-    ? await sb.auth.signInWithPassword({ email, password: pw })
-    : await sb.auth.signUp({ email, password: pw });
-  btn.disabled = false;
-  btn.textContent = _authMode === 'login' ? 'Anmelden' : 'Registrieren';
-  if (error) { _authErr(error.message); return; }
-  if (_authMode === 'register' && !data.session) {
-    errEl.style.color = 'var(--green)';
-    errEl.textContent = '✓ Bestätigungs-E-Mail gesendet — bitte Postfach prüfen!';
+  try {
+    if (_authMode === 'login') {
+      await auth.signInWithEmailAndPassword(email, pw);
+    } else {
+      const { user } = await auth.createUserWithEmailAndPassword(email, pw);
+      await user.sendEmailVerification();
+      btn.disabled = false;
+      btn.textContent = 'Registrieren';
+      errEl.style.color = 'var(--green)';
+      errEl.textContent = '✓ Bestätigungs-E-Mail gesendet — bitte Postfach prüfen!';
+    }
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = _authMode === 'login' ? 'Anmelden' : 'Registrieren';
+    _authErr(err.message);
   }
 }
 
 function toggleAuthMode() {
   _authMode = _authMode === 'login' ? 'register' : 'login';
   const login = _authMode === 'login';
-  document.getElementById('auth-title').textContent      = login ? 'Willkommen zurück'                 : 'Konto erstellen';
-  document.getElementById('auth-submit').textContent     = login ? 'Anmelden'                           : 'Registrieren';
-  document.getElementById('auth-toggle-btn').textContent = login ? 'Noch kein Konto? Registrieren'     : 'Schon ein Konto? Anmelden';
+  document.getElementById('auth-title').textContent      = login ? 'Willkommen zurück'             : 'Konto erstellen';
+  document.getElementById('auth-submit').textContent     = login ? 'Anmelden'                       : 'Registrieren';
+  document.getElementById('auth-toggle-btn').textContent = login ? 'Noch kein Konto? Registrieren' : 'Schon ein Konto? Anmelden';
   document.getElementById('auth-err').textContent = '';
 }
 
@@ -476,7 +488,7 @@ function _authErr(msg) {
 
 async function doLogout() {
   if (G.running) stopGame();
-  await sb.auth.signOut();
+  await auth.signOut();
 }
 
 async function _onSignedIn() {
@@ -500,27 +512,30 @@ function _onSignedOut() {
 
 async function _loadCloudSessions() {
   if (!currentUser) return;
-  const { data, error } = await sb
-    .from('nb_sessions')
-    .select('date,n,mode,pa,aa,oa,dur,apd,aad')
-    .eq('user_id', currentUser.id)
-    .order('date', { ascending: true });
-  if (error) { console.warn('Load error:', error.message); return; }
-  if (data?.length) {
-    sessions = data;
-    localStorage.setItem('nb_v2', JSON.stringify(sessions));
-  }
+  try {
+    const snap = await db
+      .collection('users').doc(currentUser.uid)
+      .collection('nb_sessions')
+      .orderBy('date', 'asc')
+      .get();
+    const data = snap.docs.map(d => d.data());
+    if (data.length) {
+      sessions = data;
+      localStorage.setItem('nb_v2', JSON.stringify(sessions));
+    }
+  } catch (err) { console.warn('Load error:', err.message); }
 }
 
 async function _syncSession(s) {
   if (!currentUser) return;
-  const { error } = await sb.from('nb_sessions').insert({
-    user_id: currentUser.id,
-    date: s.date, n: s.n, mode: s.mode,
-    pa: s.pa ?? null, aa: s.aa ?? null, oa: s.oa ?? null,
-    dur: s.dur ?? null, apd: s.apd ?? null, aad: s.aad ?? null,
-  });
-  if (error) console.warn('Sync failed:', error.message);
+  try {
+    await db
+      .collection('users').doc(currentUser.uid)
+      .collection('nb_sessions')
+      .add({ date: s.date, n: s.n, mode: s.mode,
+             pa: s.pa ?? null, aa: s.aa ?? null, oa: s.oa ?? null,
+             dur: s.dur ?? null, apd: s.apd ?? null, aad: s.aad ?? null });
+  } catch (err) { console.warn('Sync failed:', err.message); }
 }
 
 // ══════════════════════════════════════════════
@@ -923,10 +938,19 @@ function refreshAutoNBtn() {
   b.className   = 'small-btn ' + (G.autoN ? 'on' : 'off');
 }
 
-function clearData() {
+async function clearData() {
   if (!confirm('Alle Trainingsdaten löschen?')) return;
   sessions = []; saveSessions(); refreshSessList(); refreshTodayStats(); buildCharts();
-  if (currentUser) sb.from('nb_sessions').delete().eq('user_id', currentUser.id);
+  if (currentUser) {
+    try {
+      const snap = await db
+        .collection('users').doc(currentUser.uid)
+        .collection('nb_sessions').get();
+      const batch = db.batch();
+      snap.docs.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    } catch (err) { console.warn('Delete error:', err.message); }
+  }
 }
 
 // ══════════════════════════════════════════════
