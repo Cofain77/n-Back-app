@@ -9,7 +9,6 @@
   <title>Dual N-Back</title>
   <link id="mf" rel="manifest">
   <link rel="apple-touch-icon" id="ati">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -151,6 +150,39 @@
     .auth-input { width: 100%; padding: 13px 15px; background: var(--card); border: 1.5px solid var(--border); border-radius: 13px; color: var(--text); font-size: 15px; outline: none; transition: border-color .2s; -webkit-appearance: none; }
     .auth-input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(0,212,255,0.12); }
     .auth-input::placeholder { color: var(--muted); }
+
+    /* ── TRANSCRIPT PANEL ── */
+    #panel-transcript { padding: 14px; gap: 14px; }
+    .drop-zone { border: 2px dashed var(--border); border-radius: 14px; padding: 28px 16px; text-align: center; cursor: pointer; transition: border-color .2s, background .2s; background: var(--card); position: relative; }
+    .drop-zone.drag-over { border-color: var(--cyan); background: rgba(0,212,255,0.07); }
+    .drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+    .drop-icon { font-size: 36px; display: block; margin-bottom: 8px; }
+    .drop-label { font-size: 13px; color: var(--muted); line-height: 1.5; }
+    .drop-label strong { color: var(--text); }
+    .drop-file-name { margin-top: 10px; font-size: 12px; font-family: var(--font-mono); color: var(--cyan); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tr-row { display: flex; gap: 8px; align-items: stretch; }
+    .tr-select { flex: 1; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 13px; outline: none; -webkit-appearance: none; appearance: none; cursor: pointer; }
+    .tr-select:focus { border-color: var(--cyan); }
+    .key-wrap { position: relative; }
+    .key-input { width: 100%; padding: 10px 38px 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 12px; font-family: var(--font-mono); outline: none; transition: border-color .2s; }
+    .key-input:focus { border-color: var(--cyan); }
+    .key-input::placeholder { color: var(--muted); font-family: -apple-system, system-ui, sans-serif; font-size: 12px; }
+    .key-toggle { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; padding: 2px; }
+    .tr-btn { width: 100%; padding: 14px; background: var(--cyan); color: #000; border: none; border-radius: 12px; font-size: 14px; font-weight: 800; cursor: pointer; transition: transform .1s, opacity .1s; letter-spacing: 0.3px; }
+    .tr-btn:active { transform: scale(0.97); }
+    .tr-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .tr-result { background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: none; }
+    .tr-result.show { display: block; }
+    .tr-result-hdr { background: rgba(0,212,255,0.07); border-bottom: 1px solid var(--border); padding: 9px 14px; display: flex; align-items: center; justify-content: space-between; }
+    .tr-result-title { font-size: 11px; font-weight: 600; color: var(--cyan); letter-spacing: 0.5px; }
+    .tr-result-actions { display: flex; gap: 6px; }
+    .tr-action-btn { padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(0,212,255,0.3); background: rgba(0,212,255,0.08); color: var(--cyan); font-size: 10px; font-weight: 600; cursor: pointer; transition: background .15s; }
+    .tr-action-btn:active { background: rgba(0,212,255,0.2); }
+    .tr-text { padding: 14px; font-size: 14px; line-height: 1.7; color: var(--text); white-space: pre-wrap; word-break: break-word; max-height: 340px; overflow-y: auto; }
+    .tr-meta { padding: 8px 14px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); font-family: var(--font-mono); display: flex; gap: 14px; }
+    .tr-status { font-size: 13px; color: var(--muted); text-align: center; padding: 4px 0; min-height: 20px; }
+    .tr-status.err { color: var(--red); }
+    .tr-status.ok  { color: var(--green); }
   </style>
 </head>
 <body>
@@ -158,11 +190,7 @@
 <!-- HEADER -->
 <header>
   <div class="logo"><div></div><div></div><div></div><div></div></div>
-  <div class="title">
-    Dual N-Back
-  </div>
-  <span id="user-lbl" style="display:none;font-size:10px;color:var(--muted);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
-  <button id="logout-btn" onclick="doLogout()" style="display:none;padding:4px 9px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--muted);font-size:10px;cursor:pointer;white-space:nowrap;flex-shrink:0">Logout</button>
+  <div class="title">Dual N-Back</div>
   <div class="n-ctrl">
     <button onclick="changeN(-1)">−</button>
     <span class="n-val" id="n-disp">2</span>
@@ -172,9 +200,10 @@
 
 <!-- TABS -->
 <div class="tabs">
-  <button class="tab active" onclick="switchTab('play')"  id="tab-play">▶ Spielen</button>
-  <button class="tab"        onclick="switchTab('stats')" id="tab-stats">◉ Stats</button>
-  <button class="tab"        onclick="switchTab('history')" id="tab-history">◎ Verlauf</button>
+  <button class="tab active" onclick="switchTab('play')"       id="tab-play">▶ Spielen</button>
+  <button class="tab"        onclick="switchTab('stats')"      id="tab-stats">◉ Stats</button>
+  <button class="tab"        onclick="switchTab('history')"    id="tab-history">◎ Verlauf</button>
+  <button class="tab"        onclick="switchTab('transcript')" id="tab-transcript">⏺ Transkript</button>
 </div>
 
 <!-- PLAY PANEL -->
@@ -279,6 +308,66 @@
   </div>
 </div>
 
+<!-- TRANSCRIPT PANEL -->
+<div class="panel" id="panel-transcript">
+  <div>
+    <div class="sec-lbl">Voice Memo transkribieren</div>
+    <div class="drop-zone" id="drop-zone">
+      <input type="file" id="audio-file-input" accept=".m4a,.mp3,.mp4,.wav,.aac,.ogg,.flac,.webm" onchange="onFileSelected(this)">
+      <span class="drop-icon">🎙️</span>
+      <div class="drop-label"><strong>Apple Voice Memo auswählen</strong><br>.m4a · .mp3 · .wav · .aac (max 25 MB)</div>
+      <div class="drop-file-name" id="drop-file-name"></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="sec-lbl">Sprache</div>
+    <div class="tr-row">
+      <select class="tr-select" id="tr-lang">
+        <option value="">Auto-Erkennung</option>
+        <option value="de">Deutsch</option>
+        <option value="en">English</option>
+        <option value="fr">Français</option>
+        <option value="es">Español</option>
+        <option value="it">Italiano</option>
+        <option value="pt">Português</option>
+        <option value="nl">Nederlands</option>
+        <option value="pl">Polski</option>
+        <option value="ru">Русский</option>
+        <option value="zh">中文</option>
+        <option value="ja">日本語</option>
+        <option value="ko">한국어</option>
+        <option value="ar">العربية</option>
+        <option value="tr">Türkçe</option>
+      </select>
+    </div>
+  </div>
+
+  <div>
+    <div class="sec-lbl">OpenAI API Key</div>
+    <div class="key-wrap">
+      <input type="text" class="key-input" id="tr-api-key" placeholder="sk-..." oninput="saveApiKey()" autocomplete="off">
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-top:5px;padding:0 2px">Wird nur lokal gespeichert · Benötigt Whisper API Zugang</div>
+  </div>
+
+  <div class="tr-status" id="tr-status"></div>
+
+  <button class="tr-btn" id="tr-btn" onclick="transcribeAudio()" disabled>Transkribieren</button>
+
+  <div class="tr-result" id="tr-result">
+    <div class="tr-result-hdr">
+      <span class="tr-result-title">TRANSKRIPTION</span>
+      <div class="tr-result-actions">
+        <button class="tr-action-btn" onclick="copyTranscript()">Kopieren</button>
+        <button class="tr-action-btn" onclick="downloadTranscript()">TXT</button>
+      </div>
+    </div>
+    <div class="tr-text" id="tr-text"></div>
+    <div class="tr-meta" id="tr-meta"></div>
+  </div>
+</div>
+
 <!-- RESULT OVERLAY -->
 <div class="overlay" id="overlay">
   <div class="ov-title" id="ov-title">Session fertig!</div>
@@ -305,128 +394,7 @@
   <button class="start-btn" onclick="closeOverlay()">Weiter trainieren</button>
 </div>
 
-<!-- AUTH OVERLAY -->
-<div class="overlay show" id="auth-overlay">
-  <div style="margin-bottom:28px;text-align:center">
-    <div class="logo" style="margin:0 auto 14px;width:48px;height:48px"><div></div><div></div><div></div><div></div></div>
-    <div style="font-size:22px;font-weight:700" id="auth-title">Willkommen</div>
-    <div style="font-size:13px;color:var(--muted);margin-top:5px">Melde dich an, um zu trainieren</div>
-  </div>
-  <div style="width:100%;max-width:300px;display:flex;flex-direction:column;gap:12px">
-    <input type="email"    id="auth-email" class="auth-input" placeholder="E-Mail" autocomplete="email">
-    <input type="password" id="auth-pw"    class="auth-input" placeholder="Passwort (min. 6 Zeichen)" autocomplete="current-password">
-    <button class="start-btn" id="auth-submit" onclick="authSubmit()" style="width:100%;margin-top:4px">Anmelden</button>
-    <div style="text-align:center">
-      <button id="auth-toggle-btn" onclick="toggleAuthMode()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline">
-        Noch kein Konto? Registrieren
-      </button>
-    </div>
-    <div id="auth-err" style="font-size:12px;text-align:center;min-height:16px;line-height:1.4"></div>
-  </div>
-</div>
-
 <script>
-// ══════════════════════════════════════════════
-// SUPABASE AUTH
-// ══════════════════════════════════════════════
-const SUPA_URL = 'https://emsbvacrqijebbwrjzwe.supabase.co';
-const SUPA_KEY = 'sb_publishable_SiQOFbmrqzaveaoaNfQmEQ_zjxKIHd5';
-const sb = supabase.createClient(SUPA_URL, SUPA_KEY);
-
-let currentUser = null;
-let _authMode   = 'login';
-
-// Check existing session on load, then listen for changes
-(async () => {
-  const { data: { session } } = await sb.auth.getSession();
-  if (session?.user) { currentUser = session.user; await _onSignedIn(); }
-  sb.auth.onAuthStateChange(async (evt, sess) => {
-    if (evt === 'SIGNED_IN')  { currentUser = sess.user; await _onSignedIn(); }
-    if (evt === 'SIGNED_OUT') { currentUser = null;       _onSignedOut(); }
-  });
-})();
-
-async function authSubmit() {
-  const email = document.getElementById('auth-email').value.trim();
-  const pw    = document.getElementById('auth-pw').value;
-  const errEl = document.getElementById('auth-err');
-  const btn   = document.getElementById('auth-submit');
-  if (!email || !pw) { _authErr('E-Mail und Passwort eingeben'); return; }
-  btn.textContent = '…'; btn.disabled = true; errEl.textContent = '';
-  const { data, error } = _authMode === 'login'
-    ? await sb.auth.signInWithPassword({ email, password: pw })
-    : await sb.auth.signUp({ email, password: pw });
-  btn.disabled = false;
-  btn.textContent = _authMode === 'login' ? 'Anmelden' : 'Registrieren';
-  if (error) { _authErr(error.message); return; }
-  if (_authMode === 'register' && !data.session) {
-    errEl.style.color = 'var(--green)';
-    errEl.textContent = '✓ Bestätigungs-E-Mail gesendet — bitte Postfach prüfen!';
-  }
-}
-
-function toggleAuthMode() {
-  _authMode = _authMode === 'login' ? 'register' : 'login';
-  const login = _authMode === 'login';
-  document.getElementById('auth-title').textContent      = login ? 'Willkommen zurück'                 : 'Konto erstellen';
-  document.getElementById('auth-submit').textContent     = login ? 'Anmelden'                           : 'Registrieren';
-  document.getElementById('auth-toggle-btn').textContent = login ? 'Noch kein Konto? Registrieren'     : 'Schon ein Konto? Anmelden';
-  document.getElementById('auth-err').textContent = '';
-}
-
-function _authErr(msg) {
-  const el = document.getElementById('auth-err');
-  el.style.color = 'var(--red)'; el.textContent = msg;
-}
-
-async function doLogout() {
-  if (G.running) stopGame();
-  await sb.auth.signOut();
-}
-
-async function _onSignedIn() {
-  await _loadCloudSessions();
-  document.getElementById('auth-overlay').classList.remove('show');
-  const lbl = document.getElementById('user-lbl');
-  lbl.textContent = currentUser.email;
-  lbl.style.display = 'block';
-  document.getElementById('logout-btn').style.display = 'block';
-  refreshSessList(); refreshTodayStats();
-}
-
-function _onSignedOut() {
-  document.getElementById('auth-overlay').classList.add('show');
-  document.getElementById('user-lbl').style.display   = 'none';
-  document.getElementById('logout-btn').style.display = 'none';
-  sessions = [];
-  localStorage.removeItem('nb_v2');
-  refreshSessList(); refreshTodayStats();
-}
-
-async function _loadCloudSessions() {
-  if (!currentUser) return;
-  const { data, error } = await sb
-    .from('nb_sessions')
-    .select('date,n,mode,pa,aa,oa,dur,apd,aad')
-    .eq('user_id', currentUser.id)
-    .order('date', { ascending: true });
-  if (error) { console.warn('Load error:', error.message); return; }
-  if (data?.length) {
-    sessions = data;
-    localStorage.setItem('nb_v2', JSON.stringify(sessions));
-  }
-}
-
-async function _syncSession(s) {
-  if (!currentUser) return;
-  const { error } = await sb.from('nb_sessions').insert({
-    user_id: currentUser.id,
-    date: s.date, n: s.n, mode: s.mode,
-    pa: s.pa ?? null, aa: s.aa ?? null, oa: s.oa ?? null,
-    dur: s.dur ?? null, apd: s.apd ?? null, aad: s.aad ?? null,
-  });
-  if (error) console.warn('Sync failed:', error.message);
-}
 
 // ══════════════════════════════════════════════
 // STATE
@@ -476,7 +444,7 @@ refreshAutoNBtn();
 // TABS
 // ══════════════════════════════════════════════
 function switchTab(id) {
-  ['play','stats','history'].forEach(t => {
+  ['play','stats','history','transcript'].forEach(t => {
     document.getElementById('tab-' + t).classList.toggle('active', t === id);
     document.getElementById('panel-' + t).classList.toggle('active', t === id);
   });
@@ -694,7 +662,6 @@ function finishSession() {
   const _newSess = { date: new Date().toISOString(), n: G.n, mode: G.mode, pa, aa, oa, dur, apd, aad };
   sessions.push(_newSess);
   saveSessions();
-  _syncSession(_newSess); // fire-and-forget cloud sync
 
   // Auto-adjust N
   let adj = '';
@@ -831,7 +798,6 @@ function refreshAutoNBtn() {
 function clearData() {
   if (!confirm('Alle Trainingsdaten löschen?')) return;
   sessions = []; saveSessions(); refreshSessList(); refreshTodayStats(); buildCharts();
-  if (currentUser) sb.from('nb_sessions').delete().eq('user_id', currentUser.id);
 }
 
 // ══════════════════════════════════════════════
@@ -908,6 +874,141 @@ function buildCharts() {
     },
     options: { ...chartBase(), scales: { ...chartBase().scales, y: { ...chartBase().scales.y, min:0, max:100 } } }
   });
+}
+
+// ══════════════════════════════════════════════
+// TRANSCRIPT
+// ══════════════════════════════════════════════
+let _trFile = null;
+let _trText = '';
+
+(function initTranscript() {
+  const saved = localStorage.getItem('tr_api_key');
+  if (saved) document.getElementById('tr-api-key').value = saved;
+  updateTrBtn();
+
+  const zone = document.getElementById('drop-zone');
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f) applyFile(f);
+  });
+})();
+
+function onFileSelected(input) {
+  if (input.files[0]) applyFile(input.files[0]);
+}
+
+function applyFile(f) {
+  _trFile = f;
+  const mb = (f.size / 1024 / 1024).toFixed(1);
+  document.getElementById('drop-file-name').textContent = f.name + ' · ' + mb + ' MB';
+  setTrStatus('');
+  updateTrBtn();
+}
+
+function saveApiKey() {
+  const k = document.getElementById('tr-api-key').value.trim();
+  if (k) localStorage.setItem('tr_api_key', k);
+  else   localStorage.removeItem('tr_api_key');
+  updateTrBtn();
+}
+
+
+function updateTrBtn() {
+  const hasFile = !!_trFile;
+  const hasKey  = !!document.getElementById('tr-api-key').value.trim();
+  document.getElementById('tr-btn').disabled = !(hasFile && hasKey);
+}
+
+function setTrStatus(msg, type) {
+  const el = document.getElementById('tr-status');
+  el.textContent = msg;
+  el.className = 'tr-status' + (type ? ' ' + type : '');
+}
+
+async function transcribeAudio() {
+  if (!_trFile) return;
+  const apiKey = document.getElementById('tr-api-key').value.trim();
+  if (!apiKey) return;
+
+  if (_trFile.size > 25 * 1024 * 1024) {
+    setTrStatus('Datei zu groß — max. 25 MB erlaubt.', 'err');
+    return;
+  }
+
+  const btn = document.getElementById('tr-btn');
+  btn.disabled = true;
+  btn.textContent = 'Transkribiere…';
+  setTrStatus('Lade hoch und transkribiere…');
+  document.getElementById('tr-result').classList.remove('show');
+
+  const form = new FormData();
+  form.append('file', _trFile, _trFile.name);
+  form.append('model', 'whisper-1');
+  form.append('response_format', 'verbose_json');
+  const lang = document.getElementById('tr-lang').value;
+  if (lang) form.append('language', lang);
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + apiKey },
+      body: form,
+    });
+
+    const json = await res.json();
+
+    if (!res.ok) {
+      const msg = json?.error?.message || ('HTTP ' + res.status);
+      setTrStatus('Fehler: ' + msg, 'err');
+      return;
+    }
+
+    _trText = json.text || '';
+    const duration = json.duration ? Math.round(json.duration) + 's' : '';
+    const words = _trText.trim().split(/\s+/).filter(Boolean).length;
+    const detectedLang = json.language || '';
+
+    document.getElementById('tr-text').textContent = _trText;
+    const meta = [];
+    if (duration)     meta.push('Dauer: ' + duration);
+    if (words)        meta.push('Wörter: ' + words);
+    if (detectedLang) meta.push('Sprache: ' + detectedLang);
+    document.getElementById('tr-meta').textContent = meta.join(' · ');
+    document.getElementById('tr-result').classList.add('show');
+    setTrStatus('Transkription abgeschlossen.', 'ok');
+  } catch (err) {
+    setTrStatus('Netzwerkfehler: ' + err.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Transkribieren';
+    updateTrBtn();
+  }
+}
+
+function copyTranscript() {
+  if (!_trText) return;
+  navigator.clipboard.writeText(_trText).then(() => {
+    const btn = document.querySelector('.tr-action-btn');
+    const orig = btn.textContent;
+    btn.textContent = 'Kopiert!';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  });
+}
+
+function downloadTranscript() {
+  if (!_trText) return;
+  const name = (_trFile?.name.replace(/\.[^.]+$/, '') || 'transkription') + '.txt';
+  const blob = new Blob([_trText], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 // ══════════════════════════════════════════════
