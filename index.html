@@ -346,8 +346,7 @@
   <div>
     <div class="sec-lbl">OpenAI API Key</div>
     <div class="key-wrap">
-      <input type="password" class="key-input" id="tr-api-key" placeholder="sk-..." oninput="saveApiKey()" autocomplete="off">
-      <button class="key-toggle" onclick="toggleKeyVisibility()" id="key-toggle-btn">👁</button>
+      <input type="text" class="key-input" id="tr-api-key" placeholder="sk-..." oninput="saveApiKey()" autocomplete="off">
     </div>
     <div style="font-size:10px;color:var(--muted);margin-top:5px;padding:0 2px">Wird nur lokal gespeichert · Benötigt Whisper API Zugang</div>
   </div>
@@ -918,12 +917,6 @@ function saveApiKey() {
   updateTrBtn();
 }
 
-function toggleKeyVisibility() {
-  const inp = document.getElementById('tr-api-key');
-  const btn = document.getElementById('key-toggle-btn');
-  if (inp.type === 'password') { inp.type = 'text';     btn.textContent = '🙈'; }
-  else                         { inp.type = 'password'; btn.textContent = '👁'; }
-}
 
 function updateTrBtn() {
   const hasFile = !!_trFile;
