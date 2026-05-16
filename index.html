@@ -190,11 +190,7 @@
 <!-- HEADER -->
 <header>
   <div class="logo"><div></div><div></div><div></div><div></div></div>
-  <div class="title">
-    Dual N-Back
-  </div>
-  <span id="user-lbl" style="display:none;font-size:10px;color:var(--muted);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
-  <button id="logout-btn" onclick="doLogout()" style="display:none;padding:4px 9px;border-radius:8px;border:1px solid var(--border);background:none;color:var(--muted);font-size:10px;cursor:pointer;white-space:nowrap;flex-shrink:0">Logout</button>
+  <div class="title">Dual N-Back</div>
   <div class="n-ctrl">
     <button onclick="changeN(-1)">−</button>
     <span class="n-val" id="n-disp">2</span>
@@ -399,147 +395,7 @@
   <button class="start-btn" onclick="closeOverlay()">Weiter trainieren</button>
 </div>
 
-<!-- AUTH OVERLAY -->
-<div class="overlay show" id="auth-overlay">
-  <div style="margin-bottom:28px;text-align:center">
-    <div class="logo" style="margin:0 auto 14px;width:48px;height:48px"><div></div><div></div><div></div><div></div></div>
-    <div style="font-size:22px;font-weight:700" id="auth-title">Willkommen</div>
-    <div style="font-size:13px;color:var(--muted);margin-top:5px">Melde dich an, um zu trainieren</div>
-  </div>
-  <div style="width:100%;max-width:300px;display:flex;flex-direction:column;gap:12px">
-    <input type="email"    id="auth-email" class="auth-input" placeholder="E-Mail" autocomplete="email">
-    <input type="password" id="auth-pw"    class="auth-input" placeholder="Passwort (min. 6 Zeichen)" autocomplete="current-password">
-    <button class="start-btn" id="auth-submit" onclick="authSubmit()" style="width:100%;margin-top:4px">Anmelden</button>
-    <div style="text-align:center">
-      <button id="auth-toggle-btn" onclick="toggleAuthMode()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline">
-        Noch kein Konto? Registrieren
-      </button>
-    </div>
-    <div id="auth-err" style="font-size:12px;text-align:center;min-height:16px;line-height:1.4"></div>
-  </div>
-</div>
-
-<script type="module">
-import { initializeApp }                                      from "https://www.gstatic.com/firebasejs/12.12.1/firebase-app.js";
-import { getAuth, onAuthStateChanged,
-         signInWithEmailAndPassword,
-         createUserWithEmailAndPassword,
-         signOut, sendEmailVerification }                     from "https://www.gstatic.com/firebasejs/12.12.1/firebase-auth.js";
-import { getFirestore, collection, addDoc,
-         getDocs, query, orderBy, writeBatch }                from "https://www.gstatic.com/firebasejs/12.12.1/firebase-firestore.js";
-
-// ══════════════════════════════════════════════
-// FIREBASE INIT
-// ══════════════════════════════════════════════
-const firebaseConfig = {
-  apiKey:            "AIzaSyA8BkzSfQTEOdmvdcITuwjEmHhh521hSa0",
-  authDomain:        "dual-n-back-428dd.firebaseapp.com",
-  projectId:         "dual-n-back-428dd",
-  storageBucket:     "dual-n-back-428dd.firebasestorage.app",
-  messagingSenderId: "415268767925",
-  appId:             "1:415268767925:web:8692c67063bd6b04f1d6fc",
-  measurementId:     "G-LPMHPDTT8M"
-};
-const app  = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db   = getFirestore(app);
-
-// ══════════════════════════════════════════════
-// AUTH
-// ══════════════════════════════════════════════
-let currentUser = null;
-let _authMode   = 'login';
-
-onAuthStateChanged(auth, async (user) => {
-  if (user) { currentUser = user; await _onSignedIn(); }
-  else      { currentUser = null; _onSignedOut(); }
-});
-
-async function authSubmit() {
-  const email = document.getElementById('auth-email').value.trim();
-  const pw    = document.getElementById('auth-pw').value;
-  const errEl = document.getElementById('auth-err');
-  const btn   = document.getElementById('auth-submit');
-  if (!email || !pw) { _authErr('E-Mail und Passwort eingeben'); return; }
-  btn.textContent = '…'; btn.disabled = true; errEl.textContent = '';
-  try {
-    if (_authMode === 'login') {
-      await signInWithEmailAndPassword(auth, email, pw);
-    } else {
-      const { user } = await createUserWithEmailAndPassword(auth, email, pw);
-      await sendEmailVerification(user);
-      btn.disabled = false;
-      btn.textContent = 'Registrieren';
-      errEl.style.color = 'var(--green)';
-      errEl.textContent = '✓ Bestätigungs-E-Mail gesendet — bitte Postfach prüfen!';
-    }
-  } catch (err) {
-    btn.disabled = false;
-    btn.textContent = _authMode === 'login' ? 'Anmelden' : 'Registrieren';
-    _authErr(err.message);
-  }
-}
-
-function toggleAuthMode() {
-  _authMode = _authMode === 'login' ? 'register' : 'login';
-  const login = _authMode === 'login';
-  document.getElementById('auth-title').textContent      = login ? 'Willkommen zurück'             : 'Konto erstellen';
-  document.getElementById('auth-submit').textContent     = login ? 'Anmelden'                       : 'Registrieren';
-  document.getElementById('auth-toggle-btn').textContent = login ? 'Noch kein Konto? Registrieren' : 'Schon ein Konto? Anmelden';
-  document.getElementById('auth-err').textContent = '';
-}
-
-function _authErr(msg) {
-  const el = document.getElementById('auth-err');
-  el.style.color = 'var(--red)'; el.textContent = msg;
-}
-
-async function doLogout() {
-  if (G.running) stopGame();
-  await signOut(auth);
-}
-
-async function _onSignedIn() {
-  await _loadCloudSessions();
-  document.getElementById('auth-overlay').classList.remove('show');
-  const lbl = document.getElementById('user-lbl');
-  lbl.textContent = currentUser.email;
-  lbl.style.display = 'block';
-  document.getElementById('logout-btn').style.display = 'block';
-  refreshSessList(); refreshTodayStats();
-}
-
-function _onSignedOut() {
-  document.getElementById('auth-overlay').classList.add('show');
-  document.getElementById('user-lbl').style.display   = 'none';
-  document.getElementById('logout-btn').style.display = 'none';
-  sessions = [];
-  localStorage.removeItem('nb_v2');
-  refreshSessList(); refreshTodayStats();
-}
-
-async function _loadCloudSessions() {
-  if (!currentUser) return;
-  try {
-    const ref  = collection(db, 'users', currentUser.uid, 'nb_sessions');
-    const snap = await getDocs(query(ref, orderBy('date', 'asc')));
-    const data = snap.docs.map(d => d.data());
-    if (data.length) {
-      sessions = data;
-      localStorage.setItem('nb_v2', JSON.stringify(sessions));
-    }
-  } catch (err) { console.warn('Load error:', err.message); }
-}
-
-async function _syncSession(s) {
-  if (!currentUser) return;
-  try {
-    await addDoc(collection(db, 'users', currentUser.uid, 'nb_sessions'),
-      { date: s.date, n: s.n, mode: s.mode,
-        pa: s.pa ?? null, aa: s.aa ?? null, oa: s.oa ?? null,
-        dur: s.dur ?? null, apd: s.apd ?? null, aad: s.aad ?? null });
-  } catch (err) { console.warn('Sync failed:', err.message); }
-}
+<script>
 
 // ══════════════════════════════════════════════
 // STATE
@@ -807,7 +663,6 @@ function finishSession() {
   const _newSess = { date: new Date().toISOString(), n: G.n, mode: G.mode, pa, aa, oa, dur, apd, aad };
   sessions.push(_newSess);
   saveSessions();
-  _syncSession(_newSess); // fire-and-forget cloud sync
 
   // Auto-adjust N
   let adj = '';
@@ -941,17 +796,9 @@ function refreshAutoNBtn() {
   b.className   = 'small-btn ' + (G.autoN ? 'on' : 'off');
 }
 
-async function clearData() {
+function clearData() {
   if (!confirm('Alle Trainingsdaten löschen?')) return;
   sessions = []; saveSessions(); refreshSessList(); refreshTodayStats(); buildCharts();
-  if (currentUser) {
-    try {
-      const snap  = await getDocs(collection(db, 'users', currentUser.uid, 'nb_sessions'));
-      const batch = writeBatch(db);
-      snap.docs.forEach(d => batch.delete(d.ref));
-      await batch.commit();
-    } catch (err) { console.warn('Delete error:', err.message); }
-  }
 }
 
 // ══════════════════════════════════════════════
@@ -1170,17 +1017,6 @@ function downloadTranscript() {
   a.click();
   URL.revokeObjectURL(a.href);
 }
-
-// ══════════════════════════════════════════════
-// WINDOW EXPORTS (required for type="module")
-// ══════════════════════════════════════════════
-Object.assign(window, {
-  switchTab, changeN, toggleGame, respond,
-  authSubmit, toggleAuthMode, doLogout, closeOverlay,
-  changeTT, toggleAutoN, clearData,
-  transcribeAudio, copyTranscript, downloadTranscript,
-  toggleKeyVisibility, onFileSelected, saveApiKey,
-});
 
 // ══════════════════════════════════════════════
 // PWA SETUP
