@@ -381,15 +381,31 @@ function refreshNextSet() {
 // ══════════════════════════════════════════════
 // GAME
 // ══════════════════════════════════════════════
+// 8 positions like Jaeggi original — center (index 4) excluded
+const POSITIONS = [0, 1, 2, 3, 5, 6, 7, 8];
+
 function genSeq() {
-  const t = totalTrials(), s = [];
+  const t = totalTrials();
+  const evaluable = t - G.n; // trials where a match is possible
+  const nMatches  = Math.round(evaluable * 0.3); // exactly ~30% matches
+
+  // Pre-pick which evaluable indices get a position match and audio match
+  const shuffle = arr => { for (let i = arr.length-1; i > 0; i--) { const j = Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; };
+  const evalIdx = Array.from({length: evaluable}, (_, i) => i + G.n);
+  const posMatch = new Set(shuffle([...evalIdx]).slice(0, nMatches));
+  const audMatch = new Set(shuffle([...evalIdx]).slice(0, nMatches));
+
+  const s = [];
   for (let i = 0; i < t; i++) {
-    let pos = Math.floor(Math.random() * 9);
+    let pos    = POSITIONS[Math.floor(Math.random() * POSITIONS.length)];
     let letter = LETTERS[Math.floor(Math.random() * LETTERS.length)];
-    if (i >= G.n) {
-      if (Math.random() < 0.3) pos    = s[i - G.n].pos;
-      if (Math.random() < 0.3) letter = s[i - G.n].letter;
-    }
+    if (posMatch.has(i)) pos    = s[i - G.n].pos;
+    if (audMatch.has(i)) letter = s[i - G.n].letter;
+    // Ensure random draw didn't accidentally create an unwanted match
+    if (!posMatch.has(i) && i >= G.n && pos === s[i - G.n].pos)
+      pos = POSITIONS.find(p => p !== s[i - G.n].pos) ?? pos;
+    if (!audMatch.has(i) && i >= G.n && letter === s[i - G.n].letter)
+      letter = LETTERS.find(l => l !== s[i - G.n].letter) ?? letter;
     s.push({ pos, letter });
   }
   return s;
