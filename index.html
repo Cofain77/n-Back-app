@@ -331,7 +331,7 @@ const saveCfg = () => localStorage.setItem('nb_cfg', JSON.stringify({ n: G.n, tr
 const saveSessions = () => localStorage.setItem('nb_v2', JSON.stringify(sessions));
 
 // ── helpers ──
-const totalTrials = () => G.n + 10;
+const totalTrials = () => 20 + 3 * G.n;
 const ttSec       = ()  => (G.trialTime / 1000).toFixed(1);
 const setDur      = ()  => Math.round(totalTrials() * G.trialTime / 1000);
 const fmtDur = s  => { const m = Math.floor(s/60); return m + 'm ' + String(s%60).padStart(2,'0') + 's'; };
@@ -569,11 +569,17 @@ function finishSession() {
   sessions.push(_newSess);
   saveSessions();
 
-  // Auto-adjust N
+  // Auto-adjust N — Jaeggi protocol: use separate pa/aa thresholds
   let adj = '';
-  if (G.autoN && oa >= 0) {
-    if (oa >= 80) { G.n = Math.min(9, G.n+1); adj = '🎯 Stark! N erhöht auf ' + G.n; }
-    else if (oa < 50) { G.n = Math.max(1, G.n-1); adj = '📉 Level reduziert auf N=' + G.n; }
+  if (G.autoN) {
+    const posOk = pa < 0 || G.mode === 'audio';
+    const audOk = aa < 0 || G.mode === 'position';
+    const paVal = pa >= 0 ? pa : 100;
+    const aaVal = aa >= 0 ? aa : 100;
+    const bothHigh = paVal >= 80 && aaVal >= 80;
+    const eitherLow = paVal < 50 || aaVal < 50;
+    if (bothHigh) { G.n = Math.min(9, G.n+1); adj = '🎯 Stark! N erhöht auf ' + G.n; }
+    else if (eitherLow) { G.n = Math.max(1, G.n-1); adj = '📉 Level reduziert auf N=' + G.n; }
     else adj = '⚖️ Level bleibt bei N=' + G.n;
     saveCfg(); refreshHeader(); refreshNextSet();
   }
