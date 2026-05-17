@@ -660,8 +660,9 @@ function speakLetter(letter) {
     u.rate = 0.7;
     u.pitch = 1.0;
     u.volume = 1.0;
-    const en = voices.find(v => v.lang.startsWith('en-'));
-    if (en) u.voice = en;
+    u.lang = 'de-DE';
+    const de = voices.find(v => v.lang.startsWith('de-'));
+    if (de) u.voice = de;
     speechSynthesis.speak(u);
   }, 50);
 }
