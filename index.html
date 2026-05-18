@@ -656,7 +656,7 @@ function speakLetter(letter) {
   if (!window.speechSynthesis) return;
   speechSynthesis.cancel();
   setTimeout(() => {
-    const u = new SpeechSynthesisUtterance(letter);
+    const u = new SpeechSynthesisUtterance(letter.toLowerCase());
     u.rate = 0.7;
     u.pitch = 1.0;
     u.volume = 1.0;
